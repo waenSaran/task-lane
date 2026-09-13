@@ -37,6 +37,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://task_lane:task_lane_local@postgres:5432/task_lane}
+      PLANE_BASE_URL: ${PLANE_BASE_URL:-}
+      PLANE_API_KEY: ${PLANE_API_KEY:-}
+      PLANE_API_TOKEN: ${PLANE_API_TOKEN:-}
+      PLANE_WORKSPACE_SLUG: ${PLANE_WORKSPACE_SLUG:-}
+      PLANE_PROJECT_ID: ${PLANE_PROJECT_ID:-}
+      PLANE_ELIGIBLE_ASSIGNEE: ${PLANE_ELIGIBLE_ASSIGNEE:-saranya.h}
     volumes:
       - ${HOME}/.task-lane/repos:/data/repos
       - ${HOME}/.task-lane/plans:/data/plans
