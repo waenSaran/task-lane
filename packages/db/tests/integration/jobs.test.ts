@@ -7,8 +7,8 @@ import {
   failExpiredJobs,
   failJob,
   findJob,
-  migrate,
-} from "../../src/index.ts";
+} from "../../src/jobs.ts";
+import { migrate } from "../../src/migrate.ts";
 import { createTestPool, resetDatabase } from "./test-db.ts";
 
 const now = new Date("2026-09-13T16:20:00.000Z");
