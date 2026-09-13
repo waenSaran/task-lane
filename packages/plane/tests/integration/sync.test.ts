@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { findJob, findPlanningCaseByPlaneIssueId, migrate, savePlanningCase } from "@task-lane/db";
 import type { PlanningCase } from "@task-lane/domain";
+import {
+  enqueuePlaneFetchJob,
+  syncPlaneEligibility,
+  type PlaneReader,
+  type PlaneWorkItem,
+} from "@task-lane/plane";
 import { Pool } from "pg";
-import { enqueuePlaneFetchJob } from "../../src/jobs.ts";
-import { syncPlaneEligibility } from "../../src/sync.ts";
-import type { PlaneReader, PlaneWorkItem } from "../../src/types.ts";
 
 const now = new Date("2026-09-13T16:30:00.000Z");
 
