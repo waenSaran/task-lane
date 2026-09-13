@@ -30,14 +30,16 @@ export type StateMachineEntity = "PlanningCase" | "PlanningRun";
 
 export class InvalidStateTransitionError extends Error {
   readonly code = "INVALID_STATE_TRANSITION" as const;
+  readonly entity: StateMachineEntity;
+  readonly from: string;
+  readonly to: string;
 
-  constructor(
-    readonly entity: StateMachineEntity,
-    readonly from: string,
-    readonly to: string,
-  ) {
+  constructor(entity: StateMachineEntity, from: string, to: string) {
     super(`Illegal ${entity} transition: ${from} -> ${to}`);
     this.name = "InvalidStateTransitionError";
+    this.entity = entity;
+    this.from = from;
+    this.to = to;
   }
 }
 
