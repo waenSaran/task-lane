@@ -2,7 +2,7 @@
 
 Task Lane is a localhost-only orchestration UI for the Plane + `/plan-feature` workflow.
 
-The current foundation provides the TypeScript monorepo, Next.js web app, Node worker, PostgreSQL runtime, Docker Compose configuration, and service health probes.
+The current foundation provides the TypeScript monorepo, Next.js web app, Node worker, PostgreSQL runtime, Docker Compose configuration, service health probes, and the canonical web UI foundation.
 
 ## Prerequisites
 
@@ -41,6 +41,24 @@ pnpm typecheck
 pnpm lint
 pnpm build
 ```
+
+## Web UI foundation
+
+The canonical Task Lane UI stack is:
+
+- Next.js 16 + React 19 + TypeScript
+- Tailwind CSS v4
+- shadcn/ui
+- Base UI primitives (`@base-ui/react`)
+- Lucide React icons
+
+shadcn configuration lives at `apps/web/components.json`. Add components from the repository root with the pnpm runner, for example:
+
+```bash
+pnpm dlx shadcn@latest add button -c apps/web
+```
+
+Coding-agent rules, including the requirement to reuse this UI stack instead of adding another component/styling system, live in `AGENTS.md`.
 
 ## Architecture boundary
 
