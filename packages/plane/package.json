@@ -1,1 +1,25 @@
-{"name":"@task-lane/plane","version":"0.1.0","private":true,"type":"module","exports":"./src/index.ts"}
+{
+  "name": "@task-lane/plane",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:integration": "pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && tsc -p tsconfig.json && node --experimental-strip-types --test --test-concurrency=1 tests/integration/*.test.ts"
+  },
+  "dependencies": {
+    "@task-lane/db": "workspace:*",
+    "@task-lane/domain": "workspace:*",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "typescript": "5.9.2"
+  },
+  "types": "./src/index.ts"
+}
