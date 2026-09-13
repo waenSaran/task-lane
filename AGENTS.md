@@ -2,6 +2,15 @@
 
 These rules apply to all coding agents working in this repository.
 
+## Canonical project references
+
+Read these before changing the corresponding boundary:
+
+- `docs/ARCHITECTURE.md` — system responsibilities, data ownership, Plane write boundary, repository/agent model, persistence, and architecture guardrails.
+- `docs/PLAN_FEATURE_HANDOFF.md` — deterministic machine contract between Task Lane and `/plan-feature`, including statuses, hashes, approval safety, and validation rules.
+
+Do not duplicate these contracts in new agent-specific rule files. If a tool requires its own instruction file, point it back to this `AGENTS.md` and the relevant canonical document.
+
 ## Work selection and completion
 
 - Use native GitHub issue Relationships as the dependency source of truth. Do not recreate readiness with labels.
