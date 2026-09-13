@@ -10,6 +10,22 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: task_lane_test
+          POSTGRES_USER: task_lane
+          POSTGRES_PASSWORD: task_lane_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task_lane -d task_lane_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://task_lane:task_lane_test@127.0.0.1:5432/task_lane_test
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +41,11 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+      - name: PostgreSQL integration tests
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: pnpm test:integration
 
       - name: Typecheck
         run: pnpm typecheck
