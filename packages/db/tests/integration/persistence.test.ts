@@ -8,6 +8,7 @@ import type {
   ReviewFeedback,
   Settings,
 } from "@task-lane/domain";
+import { migrate } from "../../src/migrate.ts";
 import {
   findPlanRevision,
   findPlanningCase,
@@ -15,15 +16,14 @@ import {
   findRepository,
   findReviewFeedback,
   findSettings,
-  migrate,
   savePlanRevision,
   savePlanningCase,
   savePlanningRun,
   saveRepository,
   saveReviewFeedback,
   saveSettings,
-  withTransaction,
-} from "../../src/index.ts";
+} from "../../src/records.ts";
+import { withTransaction } from "../../src/transaction.ts";
 import { createTestPool, resetDatabase } from "./test-db.ts";
 
 const now = "2026-09-13T16:10:00.000Z";
