@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InvalidStateTransitionError } from "../src/errors.ts";
 import {
+  InvalidStateTransitionError,
   PLANNING_CASE_STATUSES,
   PLANNING_RUN_STATUSES,
   assertPlanningCaseTransition,
