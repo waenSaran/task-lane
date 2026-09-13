@@ -169,7 +169,13 @@ test("core domain records can be created, read, updated, and rolled back transac
 
     await assert.rejects(
       withTransaction(pool, async (tx) => {
-        await saveRepository(tx, { ...repository, id: "repo_rollback", name: "rollback" });
+        await saveRepository(tx, {
+          ...repository,
+          id: "repo_rollback",
+          name: "rollback",
+          sshUrl: "git@github.com:example/rollback.git",
+          localPath: "/data/repos/rollback",
+        });
         throw new Error("rollback");
       }),
       /rollback/,
