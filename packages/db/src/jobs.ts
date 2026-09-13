@@ -56,12 +56,17 @@ export async function enqueueJob<TPayload>(db: DbQueryable, input: EnqueueJobInp
      returning *`,
     [input.id, input.type, JSON.stringify(input.payload), input.priority, input.availableAt],
   );
-  return mapJob(result.rows[0]);
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error("Job insert returned no row");
+  }
+  return mapJob(row);
 }
 
 export async function findJob(db: DbQueryable, id: string): Promise<Job | null> {
   const result = await db.query<JobRow>("select * from jobs where id = $1", [id]);
-  return result.rows[0] ? mapJob(result.rows[0]) : null;
+  const row = result.rows[0];
+  return row ? mapJob(row) : null;
 }
 
 export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<Job | null> {
@@ -86,7 +91,8 @@ export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<J
      returning job.*`,
     [input.now, input.workerId, input.leaseDurationMs],
   );
-  return result.rows[0] ? mapJob(result.rows[0]) : null;
+  const row = result.rows[0];
+  return row ? mapJob(row) : null;
 }
 
 export async function completeJob(db: DbQueryable, id: string): Promise<void> {
