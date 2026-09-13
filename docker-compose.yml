@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-task_lane}
+      POSTGRES_USER: ${POSTGRES_USER:-task_lane}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-task_lane_local}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://task_lane:task_lane_local@postgres:5432/task_lane}
+    ports:
+      - "127.0.0.1:${TASK_LANE_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://task_lane:task_lane_local@postgres:5432/task_lane}
+    volumes:
+      - ${HOME}/.task-lane/repos:/data/repos
+      - ${HOME}/.task-lane/plans:/data/plans
+      - ${HOME}/.task-lane/logs:/data/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pnpm", "--filter", "@task-lane/worker", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+volumes:
+  postgres_data:
