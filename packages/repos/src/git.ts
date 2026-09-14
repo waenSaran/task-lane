@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { GithubSshRepository } from "./github-ssh-url.js";
@@ -72,6 +73,24 @@ async function pathExists(target: string): Promise<boolean> {
 export interface SyncedRepository {
   mainSha: string;
   cloned: boolean;
+}
+
+export async function withRepositoryTreeAtRef<T>(
+  localPath: string,
+  ref: string,
+  callback: (repositoryRoot: string) => Promise<T>,
+): Promise<T> {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "task-lane-repository-tree-"));
+  const archivePath = path.join(temporaryRoot, "repository.tar");
+  const repositoryRoot = path.join(temporaryRoot, "tree");
+  await mkdir(repositoryRoot);
+  try {
+    await runGit(["-C", localPath, "archive", "--format=tar", ref, "-o", archivePath], localPath);
+    await execFileAsync("tar", ["-xf", archivePath, "-C", repositoryRoot]);
+    return await callback(repositoryRoot);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 }
 
 async function ensureRemote(localPath: string, remoteUrl: string): Promise<void> {

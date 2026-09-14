@@ -11,7 +11,7 @@ import {
 import type { Repository } from "@task-lane/domain";
 import path from "node:path";
 import { parseGithubSshUrl, type GithubSshRepository } from "./github-ssh-url.js";
-import { sanitizedGitMessage, syncRepository, type SyncedRepository } from "./git.js";
+import { sanitizedGitMessage, syncRepository, withRepositoryTreeAtRef, type SyncedRepository } from "./git.js";
 import { validatePlanFeatureRepository, type PlanFeatureValidationResult } from "./plan-feature-validation.js";
 
 export interface RepositoryStore {
@@ -63,6 +63,7 @@ export interface RepositoryRegistryDependencies {
   now?: () => Date;
   sync?: (repository: GithubSshRepository) => Promise<SyncedRepository>;
   validate?: (repositoryRoot: string, now: () => string) => Promise<PlanFeatureValidationResult>;
+  materialize?: <T>(localPath: string, ref: string, callback: (repositoryRoot: string) => Promise<T>) => Promise<T>;
 }
 
 export interface RegisterRepositoryInput {
@@ -92,6 +93,7 @@ export class RepositoryRegistry {
   private readonly now: () => Date;
   private readonly sync: (repository: GithubSshRepository) => Promise<SyncedRepository>;
   private readonly validate: (repositoryRoot: string, now: () => string) => Promise<PlanFeatureValidationResult>;
+  private readonly materialize: <T>(localPath: string, ref: string, callback: (repositoryRoot: string) => Promise<T>) => Promise<T>;
   private readonly dependencies: RepositoryRegistryDependencies;
 
   constructor(dependencies: RepositoryRegistryDependencies) {
@@ -99,6 +101,7 @@ export class RepositoryRegistry {
     this.now = dependencies.now ?? (() => new Date());
     this.sync = dependencies.sync ?? syncRepository;
     this.validate = dependencies.validate ?? validatePlanFeatureRepository;
+    this.materialize = dependencies.materialize ?? withRepositoryTreeAtRef;
   }
 
   async list(): Promise<Repository[]> {
@@ -219,7 +222,7 @@ export class RepositoryRegistry {
     try {
       const parsed = parseGithubSshUrl(current.sshUrl, this.dependencies.checkoutRoot);
       const synced = await this.sync({ ...parsed, localPath: current.localPath });
-      const validation = await this.validate(current.localPath, () => checkedAt);
+      const validation = await this.materialize(current.localPath, synced.mainSha, (repositoryRoot) => this.validate(repositoryRoot, () => checkedAt));
       const result: Repository = {
         ...pending,
         validationStatus: validation.status,

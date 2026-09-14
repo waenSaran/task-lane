@@ -14,6 +14,17 @@ function isPathLike(value: string): boolean {
   return value.includes("/") || /\.(md|mdx|json|ya?ml|toml|ts|tsx|js|mjs|cjs|sh|py)$/i.test(value);
 }
 
+const repositoryRootPrefixes = [".agent/", ".claude/", "apps/", "claude_plan/", "docs/", "packages/", "scripts/", "src/", "tools/"];
+const pathToken = /(?:\.agent|\.claude|apps|claude_plan|docs|packages|scripts|src|tools|references|templates)\/[A-Za-z0-9_.:@/-]+/g;
+
+function isRepositoryRootPath(value: string): boolean {
+  return repositoryRootPrefixes.some((prefix) => value.startsWith(prefix));
+}
+
+function extractPathCandidates(value: string): string[] {
+  return [...value.matchAll(pathToken)].map((match) => match[0]);
+}
+
 function cleanReference(value: string): string {
   return value
     .trim()
@@ -37,23 +48,16 @@ export function discoverPlanFeaturePrerequisites(skillContent: string, repositor
   const skillDirectory = path.resolve(repositoryRoot, path.dirname(PLAN_FEATURE_SKILL_PATH));
   const markdownLinks = /\[[^\]]*\]\(([^)\s]+)\)/g;
   for (const match of skillContent.matchAll(markdownLinks)) {
-    if (match[1]) addReference(references, match[1], skillDirectory, repositoryRoot);
+    if (match[1]) addReference(references, match[1], isRepositoryRootPath(match[1]) ? repositoryRoot : skillDirectory, repositoryRoot);
   }
   const inlineCode = /`([^`]+)`/g;
   for (const match of skillContent.matchAll(inlineCode)) {
-    const value = match[1]?.trim();
-    if (!value) continue;
-    const baseDirectory = value.startsWith(".claude/") || value.startsWith("docs/") || value.startsWith("packages/") || value.startsWith("apps/")
-      ? repositoryRoot
-      : skillDirectory;
-    addReference(references, value, baseDirectory, repositoryRoot);
-  }
-  const prosePaths = /(?:^|\s)((?:\.claude|docs|packages|apps|references|templates|scripts|tools|src)\/[A-Za-z0-9_.:/-]+)/gm;
-  for (const match of skillContent.matchAll(prosePaths)) {
-    if (match[1]) {
-      const baseDirectory = match[1].startsWith("references/") || match[1].startsWith("templates/") ? skillDirectory : repositoryRoot;
-      addReference(references, match[1], baseDirectory, repositoryRoot);
+    for (const value of extractPathCandidates(match[1] ?? "")) {
+      addReference(references, value, isRepositoryRootPath(value) ? repositoryRoot : skillDirectory, repositoryRoot);
     }
+  }
+  for (const value of extractPathCandidates(skillContent)) {
+    addReference(references, value, isRepositoryRootPath(value) ? repositoryRoot : skillDirectory, repositoryRoot);
   }
   references.delete(PLAN_FEATURE_SKILL_PATH);
   return [...references].sort();

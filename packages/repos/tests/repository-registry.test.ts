@@ -12,7 +12,7 @@ import {
   type RepositoryStore,
 } from "../dist/registry.js";
 import { parseGithubSshUrl } from "../dist/github-ssh-url.js";
-import { GitCommandError, runGit, syncRepositoryAtPath } from "../dist/git.js";
+import { GitCommandError, runGit, syncRepositoryAtPath, withRepositoryTreeAtRef } from "../dist/git.js";
 import {
   PLAN_FEATURE_SKILL_PATH,
   validatePlanFeatureRepository,
@@ -81,6 +81,25 @@ async function validFixture(): Promise<string> {
   return root;
 }
 
+async function canonicalFixture(): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "task-lane-canonical-plan-feature-"));
+  await mkdir(path.join(root, ".claude/skills/plan-feature"), { recursive: true });
+  await mkdir(path.join(root, ".agent/knowledge"), { recursive: true });
+  await mkdir(path.join(root, "claude_plan"), { recursive: true });
+  await mkdir(path.join(root, ".claude/skills/plane/scripts"), { recursive: true });
+  await writeFile(
+    path.join(root, PLAN_FEATURE_SKILL_PATH),
+    [
+      "Read `.agent/knowledge/plan-readiness-rubric.md` and `claude_plan/plan_template.md`.",
+      "Run `python3 .claude/skills/plane/scripts/plane.py issue show`.",
+    ].join("\n"),
+  );
+  await writeFile(path.join(root, ".agent/knowledge/plan-readiness-rubric.md"), "rubric");
+  await writeFile(path.join(root, "claude_plan/plan_template.md"), "template");
+  await writeFile(path.join(root, ".claude/skills/plane/scripts/plane.py"), "print('ok')");
+  return root;
+}
+
 function makeRegistry(
   store: MemoryRepositoryStore,
   checkoutRoot: string,
@@ -92,6 +111,7 @@ function makeRegistry(
     now: () => new Date(now),
     sync: async () => ({ mainSha: "main-sha", cloned: false }),
     validate,
+    materialize: async (_localPath, _ref, callback) => callback(checkoutRoot),
   });
 }
 
@@ -139,6 +159,45 @@ test("temporary Git fixture clones main and rejects a remote without main", asyn
   );
 });
 
+test("repository validation uses the fetched origin/main tree, not the checkout branch", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "task-lane-main-tree-"));
+  const remote = path.join(root, "remote.git");
+  const source = path.join(root, "source");
+  await runGit(["init", "--bare", remote], root);
+  await runGit(["init", source], root);
+  await runGit(["config", "user.email", "fixture@example.test"], source);
+  await runGit(["config", "user.name", "Fixture"], source);
+  await writeFile(path.join(source, "README.md"), "develop");
+  await runGit(["add", "README.md"], source);
+  await runGit(["commit", "-m", "develop"], source);
+  await runGit(["branch", "-M", "develop"], source);
+  await runGit(["remote", "add", "origin", remote], source);
+  await runGit(["push", "-u", "origin", "develop"], source);
+  await runGit(["symbolic-ref", "HEAD", "refs/heads/develop"], remote);
+  await runGit(["checkout", "-b", "main"], source);
+  await mkdir(path.join(source, ".claude/skills/plan-feature"), { recursive: true });
+  await writeFile(path.join(source, PLAN_FEATURE_SKILL_PATH), "Read `docs/readiness.md`.");
+  await mkdir(path.join(source, "docs"), { recursive: true });
+  await writeFile(path.join(source, "docs/readiness.md"), "ready");
+  await runGit(["add", "."], source);
+  await runGit(["commit", "-m", "main valid"], source);
+  await runGit(["push", "-u", "origin", "main"], source);
+
+  const checkout = path.join(root, "checkout");
+  const firstSync = await syncRepositoryAtPath(checkout, remote);
+  const firstValidation = await withRepositoryTreeAtRef(checkout, firstSync.mainSha, (tree) => validatePlanFeatureRepository(tree, () => now));
+  assert.equal(firstValidation.status, "VALID");
+
+  await writeFile(path.join(source, PLAN_FEATURE_SKILL_PATH), "Read `docs/missing.md`.");
+  await runGit(["add", PLAN_FEATURE_SKILL_PATH], source);
+  await runGit(["commit", "-m", "main invalid"], source);
+  await runGit(["push", "origin", "main"], source);
+  const secondSync = await syncRepositoryAtPath(checkout, remote);
+  const secondValidation = await withRepositoryTreeAtRef(checkout, secondSync.mainSha, (tree) => validatePlanFeatureRepository(tree, () => now));
+  assert.equal(secondValidation.status, "INVALID");
+  assert.ok(secondValidation.report.errors.some((error) => error.includes("docs/missing.md")));
+});
+
 test("plan-feature validation checks the skill and every declared prerequisite", async () => {
   const root = await validFixture();
   const valid = await validatePlanFeatureRepository(root, () => now);
@@ -155,6 +214,15 @@ test("plan-feature validation checks the skill and every declared prerequisite",
   const noSkill = await validatePlanFeatureRepository(skillless, () => now);
   assert.equal(noSkill.status, "INVALID");
   assert.ok(noSkill.report.errors.some((error) => error.includes(PLAN_FEATURE_SKILL_PATH)));
+
+  const canonical = await canonicalFixture();
+  const canonicalResult = await validatePlanFeatureRepository(canonical, () => now);
+  assert.equal(canonicalResult.status, "VALID");
+  assert.deepEqual(canonicalResult.prerequisites, [
+    ".agent/knowledge/plan-readiness-rubric.md",
+    ".claude/skills/plane/scripts/plane.py",
+    "claude_plan/plan_template.md",
+  ]);
 });
 
 test("registry revalidation moves INVALID to VALID and persists a fresh report", async () => {
