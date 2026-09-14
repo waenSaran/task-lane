@@ -4,10 +4,14 @@ These rules apply to all coding agents working in this repository.
 
 ## Canonical project references
 
-Read these before changing the corresponding boundary:
+Read these before changing the corresponding boundary, in this order:
 
-- `docs/ARCHITECTURE.md` — system responsibilities, data ownership, Plane write boundary, repository/agent model, persistence, and architecture guardrails.
-- `docs/PLAN_FEATURE_HANDOFF.md` — deterministic machine contract between Task Lane and `/plan-feature`, including statuses, hashes, approval safety, and validation rules.
+- `docs/ARCHITECTURE.md` — stable system responsibilities, data ownership, Plane write boundary, repository/agent model, persistence, and architecture guardrails.
+- `docs/ARCHITECTURE_DECISIONS.md` — accepted decisions that refine or supersede earlier architecture proposals.
+- `docs/AI_EXECUTION_PROTOCOL.md` — required contract/proof-driven implementation, verification, parallel-work, and merge-gate workflow for AI agents.
+- `docs/PLAN_FEATURE_HANDOFF.md` — deterministic Task Lane machine contract around the existing `/plan-feature` workflow, including statuses, hashes, approval safety, and validation rules.
+
+If an older issue comment, PR, implementation proposal, or document conflicts with an accepted architecture decision, follow the accepted decision and update the stale source rather than implementing both interpretations.
 
 Do not duplicate these contracts in new agent-specific rule files. If a tool requires its own instruction file, point it back to this `AGENTS.md` and the relevant canonical document.
 
@@ -18,7 +22,9 @@ Do not duplicate these contracts in new agent-specific rule files. If a tool req
 - Make meaningful implementation slices visible as issues/linked child issues instead of hiding a long sequence of internal subtasks.
 - Keep Plane state separate from Task Lane workflow state.
 - Task Lane itself is read-only toward Plane. All Plane writes remain owned by `/plan-feature` and the repository Plane tooling.
-- Before closing an issue, satisfy its Acceptance Criteria, run the specified tests plus relevant regression tests, and provide verification evidence.
+- Before coding a non-trivial issue, define the contract, invariants, proof obligations, mandatory tests, cross-issue interfaces, and non-goals required by `docs/AI_EXECUTION_PROTOCOL.md`.
+- Before closing an issue, satisfy its Acceptance Criteria, prove the required invariants, run the specified tests plus relevant regression tests, and provide verification evidence.
+- CI green is necessary but not sufficient for merge readiness; verify semantic contracts and runtime packaging independently.
 - Prefer fast targeted local/agent checks while implementing. Do not intentionally push RED commits merely to use the full GitHub Actions pipeline as a test runner when a local checkout is available.
 
 ## Canonical web UI stack
