@@ -101,7 +101,7 @@ async function hasGrokAuth(homeDir: string, env: NodeJS.ProcessEnv): Promise<boo
   if (env.XAI_API_KEY || env.GROK_DEPLOYMENT_KEY) return true;
   try {
     const auth = JSON.parse(await readFile(path.join(homeDir, '.grok', 'auth.json'), 'utf8')) as unknown;
-    if (typeof auth === 'object' && auth !== null && JSON.stringify(auth).includes('"key"')) return true;
+    if (typeof auth === 'object' && auth !== null && /"key"\s*:\s*"[^"]+"/.test(JSON.stringify(auth))) return true;
   } catch {
     // A missing or malformed auth file is handled as unauthenticated below.
   }
@@ -127,7 +127,7 @@ class CliAdapter implements AgentAdapter {
 
   async doctor(): Promise<AgentDoctorResult> {
     const environment = environmentFor(this.definition.environment);
-    const versionResult = await runCommand(this.definition.command, ['--version'], process.cwd(), environment);
+    const versionResult = await runCommand(this.definition.command, ['--version'], os.tmpdir(), environment);
     const version = parseCliVersion(versionResult.stdout || versionResult.stderr);
     if (version === UNKNOWN_VERSION) {
       return {
@@ -186,7 +186,7 @@ class CliAdapter implements AgentAdapter {
 
   private async codexAuth(environment: NodeJS.ProcessEnv): Promise<{ authenticated: boolean; failure: AgentFailure | null }> {
     if (environment.CODEX_API_KEY) return { authenticated: true, failure: null };
-    const result = await runCommand(this.definition.command, ['doctor', '--json'], process.cwd(), environment);
+    const result = await runCommand(this.definition.command, ['doctor', '--json'], os.tmpdir(), environment);
     if (result.errorCode === 'ENOENT') return { authenticated: false, failure: failure('BINARY_MISSING', 'Agent CLI is not installed', false) };
     try {
       const report = JSON.parse(result.stdout) as { checks?: Record<string, { status?: string }> };
@@ -198,7 +198,7 @@ class CliAdapter implements AgentAdapter {
   }
 
   private async grokAuth(environment: NodeJS.ProcessEnv): Promise<{ authenticated: boolean; failure: AgentFailure | null }> {
-    const inspect = await runCommand(this.definition.command, ['inspect', '--json'], process.cwd(), environment);
+    const inspect = await runCommand(this.definition.command, ['inspect', '--json'], os.tmpdir(), environment);
     if (inspect.errorCode === 'ENOENT') return { authenticated: false, failure: failure('BINARY_MISSING', 'Agent CLI is not installed', false) };
     if (inspect.exitCode !== 0) return { authenticated: false, failure: authFailureFromOutput(inspect.stderr) ?? failure('CLI_DOCTOR_FAILED', 'Agent capability check failed') };
     const authenticated = await hasGrokAuth(this.definition.homeDir, environment);
@@ -244,7 +244,7 @@ class CliAdapter implements AgentAdapter {
     let processFailure: AgentFailure | null = null;
     if (processResult.failure) {
       processFailure = processResult.failure.code === 'PROCESS_FAILED'
-        ? authFailureFromOutput(await readFile(processResult.stderrPath, 'utf8')) ?? failure('PROCESS_FAILED', processResult.failure.message)
+        ? authFailureFromOutput(`${await readFile(processResult.stderrPath, 'utf8')}\n${await readFile(processResult.stdoutPath, 'utf8')}`) ?? failure('PROCESS_FAILED', processResult.failure.message)
         : failure(processResult.failure.code, processResult.failure.message);
     } else if (processResult.exitCode !== 0) {
       processFailure = failure('PROCESS_FAILED', `Agent process exited with code ${processResult.exitCode ?? 'unknown'}`);

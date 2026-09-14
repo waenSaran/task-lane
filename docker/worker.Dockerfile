@@ -26,4 +26,5 @@ ENV NODE_ENV=production
 RUN corepack enable && corepack prepare pnpm@12.4.1 --activate
 WORKDIR /app
 COPY --from=build /app /app
+ENTRYPOINT ["/app/docker/worker-entrypoint.sh"]
 CMD ["pnpm", "--filter", "@task-lane/worker", "start"]
