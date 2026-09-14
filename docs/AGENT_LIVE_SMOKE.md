@@ -17,9 +17,9 @@ docker compose run --rm --entrypoint grok worker --version
 
 Runtime boundaries verified for these pins:
 
-- Codex discovers repository skills from `.agents/skills`; it does not natively discover the repository's canonical `.claude/skills/plan-feature/SKILL.md`. The adapter therefore creates a run-scoped `$HOME/.agents/skills/plan-feature` directory symlink outside the checkout, pointing at that canonical directory. The `/plan-feature <Plane UC>` prompt remains unchanged.
+- Codex discovers repository skills from `.agents/skills`; it does not natively discover the repository's canonical `.claude/skills/plan-feature/SKILL.md`. The adapter therefore creates a run-scoped `$HOME/.agents/skills/plan-feature` directory symlink outside the checkout, points it at that canonical directory, and translates the internal Codex prompt to `$plan-feature <Plane UC>` for explicit skill invocation. The public adapter input remains `/plan-feature <Plane UC>`.
 - Grok `1.0.30` reads Claude-compatible `.claude/skills` directly, so it does not need the Codex bridge.
-- Both adapters pass the native `read-only` sandbox. Grok also uses `--always-approve` only to avoid an unattended prompt; its sandbox still denies source edits. Session state remains writable in the agent runtime directory.
+- Both adapters use native `workspace-write` mode so `/plan-feature` can run child commands, create draft/handoff files, and reach Plane. The worker mounts `/data/repos` read-only; session, scratch, logs, and handoff paths remain writable outside the source checkout. Grok also uses `--always-approve` only to avoid an unattended prompt.
 - The bridge and runtime are created under the caller-provided artifact root. The source checkout is never changed. Codex auth/config are referenced through symlinks to the read-only runtime inputs; they are not copied into the runtime volume.
 
 After building the agents package, run the capability checks from a disposable checkout:
@@ -55,3 +55,5 @@ rm -rf "$tmp_dir"
 ```
 
 Replace `CodexAdapter` with `GrokAdapter` for the Grok check. Keep the adapter's artifact directory outside any repository that matters. Command construction for `/plan-feature <Plane UC>` is covered by the fixture tests; a real `/plan-feature` run is a separate deliberate smoke test and may write through the existing Plane tooling.
+
+To verify the Codex bridge explicitly, add a disposable repository skill at `.claude/skills/plan-feature/SKILL.md` whose description and body produce a unique harmless marker, then run the adapter with `instruction: '/plan-feature DOAE-1234'`. The result's stdout artifact must contain that marker and a session id. The adapter will pass `$plan-feature DOAE-1234` to Codex while keeping the canonical skill in the disposable checkout and the bridge outside it.

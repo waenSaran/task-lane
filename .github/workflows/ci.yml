@@ -57,7 +57,9 @@ jobs:
         run: pnpm build
 
       - name: Prepare persistent host directories
-        run: mkdir -p "$HOME/.task-lane/repos" "$HOME/.task-lane/plans" "$HOME/.task-lane/logs"
+        run: |
+          mkdir -p "$HOME/.task-lane/repos/readonly-smoke" "$HOME/.task-lane/plans" "$HOME/.task-lane/logs"
+          printf 'source-is-immutable\n' > "$HOME/.task-lane/repos/readonly-smoke/source.txt"
 
       - name: Start Docker Compose stack
         run: docker compose up -d --build
@@ -76,6 +78,15 @@ jobs:
 
       - name: Verify services are healthy
         run: docker compose ps
+
+      - name: Verify planning checkout is read-only but runtime remains usable
+        run: |
+          if docker compose exec -T worker sh -c 'printf mutated > /data/repos/readonly-smoke/source.txt'; then
+            echo 'planning checkout unexpectedly accepted a source mutation'
+            exit 1
+          fi
+          test "$(cat "$HOME/.task-lane/repos/readonly-smoke/source.txt")" = source-is-immutable
+          docker compose exec -T worker sh -c 'test "$(cat /data/repos/readonly-smoke/source.txt)" = source-is-immutable && node -e "const fs = require(\"node:fs\"); fs.mkdirSync(\"/data/plans/readonly-smoke\", { recursive: true }); fs.writeFileSync(\"/tmp/task-lane-scratch.txt\", \"scratch\"); fs.writeFileSync(\"/data/plans/readonly-smoke/handoff.json\", \"{}\"); require(\"node:child_process\").execFileSync(process.execPath, [\"-e\", \"process.stdout.write(\\\"child-ok\\\")\"]); fetch(\"http://web:3000/api/health\").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))" && test -s /tmp/task-lane-scratch.txt && test -s /data/plans/readonly-smoke/handoff.json'
 
       - name: Stop Docker Compose stack
         if: always()

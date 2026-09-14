@@ -44,7 +44,7 @@ services:
       PLANE_PROJECT_ID: ${PLANE_PROJECT_ID:-}
       PLANE_ELIGIBLE_ASSIGNEE: ${PLANE_ELIGIBLE_ASSIGNEE:-saranya.h}
     volumes:
-      - ${HOME}/.task-lane/repos:/data/repos
+      - ${HOME}/.task-lane/repos:/data/repos:ro
       - ${HOME}/.task-lane/plans:/data/plans
       - ${HOME}/.task-lane/logs:/data/logs
       - ${HOME}/.codex:/host-config/.codex:ro

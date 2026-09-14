@@ -19,6 +19,10 @@ const execFile = promisify(execFileCallback);
 const UNKNOWN_VERSION = 'unknown';
 const PLAN_FEATURE_REQUEST = /^\/plan-feature(?:\s|$)/;
 
+function explicitCodexInstruction(instruction: string): string {
+  return instruction.replace(/^\/plan-feature(?=\s|$)/, '$plan-feature');
+}
+
 export const PINNED_AGENT_VERSIONS = {
   CODEX: '0.154.0',
   GROK: '1.0.30',
@@ -249,14 +253,14 @@ class CliAdapter implements AgentAdapter {
 
   private startArgs(request: AgentExecutionRequest): string[] {
     return this.definition.kind === 'codex'
-      ? ['exec', '--json', '--cd', request.cwd, '--sandbox', 'read-only', request.instruction]
-      : ['--no-auto-update', '--single', request.instruction, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'read-only', '--always-approve'];
+      ? ['exec', '--json', '--cd', request.cwd, '--sandbox', 'workspace-write', explicitCodexInstruction(request.instruction)]
+      : ['--no-auto-update', '--single', request.instruction, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'workspace-write', '--always-approve'];
   }
 
   private resumeArgs(request: AgentResumeRequest): string[] {
     return this.definition.kind === 'codex'
-      ? ['exec', 'resume', '--json', '--cd', request.cwd, '--sandbox', 'read-only', request.sessionId, request.instruction]
-      : ['--no-auto-update', '--single', request.instruction, '--resume', request.sessionId, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'read-only', '--always-approve'];
+      ? ['exec', 'resume', '--json', '--cd', request.cwd, '--sandbox', 'workspace-write', request.sessionId, explicitCodexInstruction(request.instruction)]
+      : ['--no-auto-update', '--single', request.instruction, '--resume', request.sessionId, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'workspace-write', '--always-approve'];
   }
 
   private async execute(

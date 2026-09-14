@@ -50,8 +50,8 @@ else { console.log(process.env.CODEX_ACCESS_TOKEN ?? ''); console.log(JSON.strin
     assert.equal(start.version, '0.154.0');
     assert.equal(start.sessionId, 'started');
     assert.equal(resumed.sessionId, 'resumed');
-    assert.deepEqual(calls[1].args, ['exec', '--json', '--cd', repo, '--sandbox', 'read-only', '/plan-feature DOAE-1234']);
-    assert.deepEqual(calls[3].args, ['exec', 'resume', '--json', '--cd', repo, '--sandbox', 'read-only', 'started', '/plan-feature DOAE-1234']);
+    assert.deepEqual(calls[1].args, ['exec', '--json', '--cd', repo, '--sandbox', 'workspace-write', '$plan-feature DOAE-1234']);
+    assert.deepEqual(calls[3].args, ['exec', 'resume', '--json', '--cd', repo, '--sandbox', 'workspace-write', 'started', '$plan-feature DOAE-1234']);
     await assert.rejects(lstat(path.join(repo, '.agents')));
     assert.equal((await readFile(start.stdoutPath, 'utf8')).includes('super-secret'), false);
   } finally {
@@ -114,8 +114,8 @@ else console.log(JSON.stringify({ text: 'ok', sessionId: process.argv.includes('
     assert.equal(start.sessionId, 'started');
     assert.equal(resumed.sessionId, 'resumed');
     assert.equal(doctor.authenticated, true);
-    assert.deepEqual(calls[1].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'read-only', '--always-approve']);
-    assert.deepEqual(calls[3].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--resume', 'started', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'read-only', '--always-approve']);
+    assert.deepEqual(calls[1].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'workspace-write', '--always-approve']);
+    assert.deepEqual(calls[3].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--resume', 'started', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'workspace-write', '--always-approve']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
