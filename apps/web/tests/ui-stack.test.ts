@@ -11,7 +11,8 @@ test("canonical UI dependencies are pinned in the web app", async () => {
   assert.equal(pkg.dependencies["@base-ui/react"], "1.8.0");
   assert.equal(pkg.dependencies["lucide-react"], "1.45.0");
   assert.equal(pkg.devDependencies.tailwindcss, "4.3.3");
-  assert.equal(pkg.devDependencies["@tailwindcss/postcss"], "4.3.3");
+  assert.equal(pkg.devDependencies["@tailwindcss/vite"], "4.3.3");
+  assert.equal(pkg.devDependencies["@tailwindcss/postcss"], undefined);
 });
 
 test("shadcn is configured to generate Base UI components with Lucide icons", async () => {
