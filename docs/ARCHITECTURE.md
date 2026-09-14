@@ -14,7 +14,7 @@ Task Lane orchestrates the workflow. `/plan-feature` owns planning decisions and
 Browser
   |
   v
-Next.js web/API
+SvelteKit web/API
   |
   v
 PostgreSQL <---- Node/TypeScript worker
@@ -27,7 +27,7 @@ PostgreSQL <---- Node/TypeScript worker
 
 Docker Compose runs three services on macOS:
 
-- `web` — Next.js UI and HTTP API
+- `web` — SvelteKit UI and HTTP API served by adapter-node
 - `worker` — scheduler, DB-backed jobs, repo sync, and agent execution
 - `postgres` — durable workflow state and queue storage
 
@@ -36,7 +36,7 @@ The web UI binds to `127.0.0.1` only. Task Lane v1 has no multi-user authenticat
 ## Repository layout
 
 ```text
-apps/web        Next.js UI and API
+apps/web        SvelteKit UI and API
 apps/worker     background worker
 packages/domain shared workflow types and invariants
 packages/db     PostgreSQL access and queue primitives
@@ -159,5 +159,6 @@ Do not introduce these without an explicit issue and human approval:
 - Plane writes outside `/plan-feature`
 - automatic business-rule inference
 - parallel planning that violates repository SHA reproducibility
+- React/Next.js or a second frontend/component framework alongside the canonical Svelte stack
 
 For UI-specific rules, follow the root `AGENTS.md`.

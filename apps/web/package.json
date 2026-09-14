@@ -13,14 +13,13 @@
     "lint": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@base-ui/react": "1.8.0",
+    "@lucide/svelte": "1.45.0",
     "@task-lane/db": "workspace:*",
     "@task-lane/plane": "workspace:*",
-    "cn": "0.2.6",
-    "lucide-react": "1.45.0",
+    "bits-ui": "2.19.2",
+    "clsx": "2.1.1",
     "pg": "8.23.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "tailwind-merge": "3.6.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "5.5.7",
@@ -29,7 +28,6 @@
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.0",
-    "eslint": "^9.0.0",
     "svelte": "5.57.0",
     "svelte-check": "4.7.6",
     "tailwindcss": "4.3.3",
