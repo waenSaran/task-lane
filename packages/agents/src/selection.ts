@@ -1,4 +1,6 @@
-export type AgentKind = 'CODEX' | 'GROK';
+import type { AgentKind } from '@task-lane/domain';
+
+export type { AgentKind } from '@task-lane/domain';
 
 export interface AgentSelectionInput {
   taskOverride?: AgentKind | null;

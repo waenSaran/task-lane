@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -17,6 +17,7 @@ import type {
 
 const execFile = promisify(execFileCallback);
 const UNKNOWN_VERSION = 'unknown';
+const PLAN_FEATURE_REQUEST = /^\/plan-feature(?:\s|$)/;
 
 export const PINNED_AGENT_VERSIONS = {
   CODEX: '0.154.0',
@@ -113,6 +114,47 @@ async function hasGrokAuth(homeDir: string, env: NodeJS.ProcessEnv): Promise<boo
   }
 }
 
+async function replaceSymlink(target: string, source: string, type: 'dir' | 'file'): Promise<void> {
+  await rm(target, { recursive: true, force: true });
+  await symlink(source, target, type);
+}
+
+async function prepareCodexEnvironment(
+  homeDir: string,
+  cwd: string,
+  artifactRoot: string,
+  runId: string,
+  environment: NodeJS.ProcessEnv,
+): Promise<{ environment: NodeJS.ProcessEnv; failure: AgentFailure | null }> {
+  const canonicalSkill = path.join(cwd, '.claude', 'skills', 'plan-feature');
+  try {
+    const skill = await lstat(path.join(canonicalSkill, 'SKILL.md'));
+    if (!skill.isFile()) throw new Error('canonical plan-feature skill is not a file');
+  } catch {
+    return {
+      environment,
+      failure: failure('CANONICAL_SKILL_MISSING', 'The repository canonical .claude/skills/plan-feature/SKILL.md is unavailable', false),
+    };
+  }
+
+  const runtimeRoot = path.join(artifactRoot, runId, 'codex-runtime');
+  const codexHome = path.join(runtimeRoot, '.codex');
+  const skillLink = path.join(runtimeRoot, '.agents', 'skills', 'plan-feature');
+  await mkdir(path.dirname(skillLink), { recursive: true });
+  await mkdir(codexHome, { recursive: true });
+  await replaceSymlink(skillLink, canonicalSkill, 'dir');
+
+  const sourceCodexHome = environment.CODEX_HOME ?? path.join(homeDir, '.codex');
+  for (const filename of ['auth.json', 'config.toml']) {
+    await replaceSymlink(path.join(codexHome, filename), path.join(sourceCodexHome, filename), 'file');
+  }
+
+  return {
+    environment: { ...environment, HOME: runtimeRoot, CODEX_HOME: codexHome },
+    failure: null,
+  };
+}
+
 interface Definition {
   kind: 'codex' | 'grok';
   command: string;
@@ -207,14 +249,14 @@ class CliAdapter implements AgentAdapter {
 
   private startArgs(request: AgentExecutionRequest): string[] {
     return this.definition.kind === 'codex'
-      ? ['exec', '--json', '--cd', request.cwd, '--sandbox', 'workspace-write', request.instruction]
-      : ['--no-auto-update', '--single', request.instruction, '--cwd', request.cwd, '--output-format', 'json', '--always-approve'];
+      ? ['exec', '--json', '--cd', request.cwd, '--sandbox', 'read-only', request.instruction]
+      : ['--no-auto-update', '--single', request.instruction, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'read-only', '--always-approve'];
   }
 
   private resumeArgs(request: AgentResumeRequest): string[] {
     return this.definition.kind === 'codex'
-      ? ['exec', 'resume', '--json', '--cd', request.cwd, '--sandbox', 'workspace-write', request.sessionId, request.instruction]
-      : ['--no-auto-update', '--single', request.instruction, '--resume', request.sessionId, '--cwd', request.cwd, '--output-format', 'json', '--always-approve'];
+      ? ['exec', 'resume', '--json', '--cd', request.cwd, '--sandbox', 'read-only', request.sessionId, request.instruction]
+      : ['--no-auto-update', '--single', request.instruction, '--resume', request.sessionId, '--cwd', request.cwd, '--output-format', 'json', '--sandbox', 'read-only', '--always-approve'];
   }
 
   private async execute(
@@ -222,8 +264,13 @@ class CliAdapter implements AgentAdapter {
     args: readonly string[],
     _resuming: boolean,
   ): Promise<AgentExecutionResult> {
-    const environment = environmentFor(this.definition.environment, request.env);
-    const versionResult = await runCommand(this.definition.command, ['--version'], request.cwd, environment);
+    let environment = environmentFor(this.definition.environment, request.env);
+    if (this.definition.kind === 'codex' && PLAN_FEATURE_REQUEST.test(request.instruction)) {
+      const prepared = await prepareCodexEnvironment(this.definition.homeDir, request.cwd, request.artifactRoot, request.runId, environment);
+      if (prepared.failure) return this.failureResult(request, null, prepared.failure);
+      environment = prepared.environment;
+    }
+    const versionResult = await runCommand(this.definition.command, ['--version'], os.tmpdir(), environment);
     const version = parseCliVersion(versionResult.stdout || versionResult.stderr);
     if (version === UNKNOWN_VERSION) {
       return this.failureResult(request, version, failure(versionResult.errorCode === 'ENOENT' ? 'BINARY_MISSING' : 'VERSION_UNAVAILABLE', 'Agent CLI version could not be read', false));
@@ -236,7 +283,7 @@ class CliAdapter implements AgentAdapter {
       command: this.definition.command,
       args,
       cwd: request.cwd,
-      env: { ...this.definition.environment, ...request.env },
+      env: environment,
       artifactRoot: request.artifactRoot,
       runId: request.runId,
       signal: request.signal,

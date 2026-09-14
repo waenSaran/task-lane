@@ -20,11 +20,12 @@ RUN corepack enable && corepack prepare pnpm@12.4.1 --activate
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile=false
-RUN pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/worker build
+RUN pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/agents build && pnpm --filter @task-lane/worker build
 FROM cli-runtime AS runtime
 ENV NODE_ENV=production
 RUN corepack enable && corepack prepare pnpm@12.4.1 --activate
 WORKDIR /app
 COPY --from=build /app /app
+RUN node --input-type=module -e "import { CodexAdapter, GrokAdapter } from './packages/agents/dist/index.js'; new CodexAdapter(); new GrokAdapter();"
 ENTRYPOINT ["/app/docker/worker-entrypoint.sh"]
 CMD ["pnpm", "--filter", "@task-lane/worker", "start"]

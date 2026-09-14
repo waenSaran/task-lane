@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const request = (artifactRoot: string, runId: string) => ({
+const request = (artifactRoot: string, runId: string, cwd = process.cwd()) => ({
   runId,
-  cwd: process.cwd(),
+  cwd,
   instruction: '/plan-feature DOAE-1234',
   artifactRoot,
 });
@@ -21,29 +21,38 @@ async function fixture(root: string, body: string): Promise<{ command: string; c
 
 const capture = `
 const fs = require('node:fs');
+const path = require('node:path');
 fs.appendFileSync(process.env.CAPTURE_PATH, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + '\\n');
+if (process.env.REQUIRE_CANONICAL_SKILL) {
+  const skillLink = path.join(process.env.HOME, '.agents', 'skills', 'plan-feature');
+  if (!fs.lstatSync(skillLink).isSymbolicLink() || fs.readFileSync(path.join(skillLink, 'SKILL.md'), 'utf8') !== process.env.CANONICAL_SKILL_CONTENT) process.exit(42);
+}
 `;
 
 test('CodexAdapter builds safe start and native resume commands and captures thread ids', async () => {
   const mod = await import('../dist/index.js');
   const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-codex-'));
   try {
+    const repo = path.join(root, 'repo');
+    await mkdir(path.join(repo, '.claude', 'skills', 'plan-feature'), { recursive: true });
+    await writeFile(path.join(repo, '.claude', 'skills', 'plan-feature', 'SKILL.md'), 'canonical-plan-feature-skill', 'utf8');
     const fake = await fixture(root, `${capture}
 if (process.argv.includes('--version')) console.log('codex-cli 0.154.0');
 else if (process.argv.includes('doctor')) console.log(JSON.stringify({ checks: { 'auth.credentials': { status: 'ok' } } }));
 else { console.log(process.env.CODEX_ACCESS_TOKEN ?? ''); console.log(JSON.stringify({ type: 'thread.started', thread_id: process.argv.includes('resume') ? 'resumed' : 'started' })); }
 `);
-    const adapter = new mod.CodexAdapter({ command: fake.command, environment: { CAPTURE_PATH: fake.calls[0] } });
+    const adapter = new mod.CodexAdapter({ command: fake.command, environment: { CAPTURE_PATH: fake.calls[0], REQUIRE_CANONICAL_SKILL: '1', CANONICAL_SKILL_CONTENT: 'canonical-plan-feature-skill' } });
     const env = { CODEX_ACCESS_TOKEN: 'super-secret' };
-    const start = await adapter.start({ ...request(root, 'start'), env });
-    const resumed = await adapter.resume({ ...request(root, 'resume'), sessionId: 'started', env });
+    const start = await adapter.start({ ...request(root, 'start', repo), env });
+    const resumed = await adapter.resume({ ...request(root, 'resume', repo), sessionId: 'started', env });
     const calls = (await readFile(fake.calls[0]!, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
 
     assert.equal(start.version, '0.154.0');
     assert.equal(start.sessionId, 'started');
     assert.equal(resumed.sessionId, 'resumed');
-    assert.deepEqual(calls[1].args, ['exec', '--json', '--cd', process.cwd(), '--sandbox', 'workspace-write', '/plan-feature DOAE-1234']);
-    assert.deepEqual(calls[3].args, ['exec', 'resume', '--json', '--cd', process.cwd(), '--sandbox', 'workspace-write', 'started', '/plan-feature DOAE-1234']);
+    assert.deepEqual(calls[1].args, ['exec', '--json', '--cd', repo, '--sandbox', 'read-only', '/plan-feature DOAE-1234']);
+    assert.deepEqual(calls[3].args, ['exec', 'resume', '--json', '--cd', repo, '--sandbox', 'read-only', 'started', '/plan-feature DOAE-1234']);
+    await assert.rejects(lstat(path.join(repo, '.agents')));
     assert.equal((await readFile(start.stdoutPath, 'utf8')).includes('super-secret'), false);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -64,6 +73,19 @@ else { console.error('authentication failed XAI_API_KEY=' + process.env.XAI_API_
     });
     assert.equal(result.failure?.code, 'AUTHENTICATION_UNAVAILABLE');
     assert.equal((await readFile(result.stderrPath, 'utf8')).includes('xai-secret'), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('CodexAdapter refuses canonical plan-feature execution when the repository skill is absent', async () => {
+  const mod = await import('../dist/index.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-codex-missing-skill-'));
+  try {
+    const fake = await fixture(root, `${capture} process.exit(0);`);
+    const result = await new mod.CodexAdapter({ command: fake.command }).start(request(root, 'missing-skill'));
+    assert.equal(result.failure?.code, 'CANONICAL_SKILL_MISSING');
+    await assert.rejects(readFile(fake.calls[0]!, 'utf8'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -92,8 +114,8 @@ else console.log(JSON.stringify({ text: 'ok', sessionId: process.argv.includes('
     assert.equal(start.sessionId, 'started');
     assert.equal(resumed.sessionId, 'resumed');
     assert.equal(doctor.authenticated, true);
-    assert.deepEqual(calls[1].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--cwd', process.cwd(), '--output-format', 'json', '--always-approve']);
-    assert.deepEqual(calls[3].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--resume', 'started', '--cwd', process.cwd(), '--output-format', 'json', '--always-approve']);
+    assert.deepEqual(calls[1].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'read-only', '--always-approve']);
+    assert.deepEqual(calls[3].args, ['--no-auto-update', '--single', '/plan-feature DOAE-1234', '--resume', 'started', '--cwd', process.cwd(), '--output-format', 'json', '--sandbox', 'read-only', '--always-approve']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

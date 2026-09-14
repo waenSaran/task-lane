@@ -9,8 +9,8 @@ sync_config() {
 
   for filename in auth.json config.toml; do
     if [ -f "$source_dir/$filename" ]; then
-      cp "$source_dir/$filename" "$target_dir/$filename"
-      chmod 600 "$target_dir/$filename"
+      rm -f "$target_dir/$filename"
+      ln -s "$source_dir/$filename" "$target_dir/$filename"
     else
       rm -f "$target_dir/$filename"
     fi

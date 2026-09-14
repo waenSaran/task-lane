@@ -15,6 +15,13 @@ docker compose run --rm --entrypoint codex worker --version
 docker compose run --rm --entrypoint grok worker --version
 ```
 
+Runtime boundaries verified for these pins:
+
+- Codex discovers repository skills from `.agents/skills`; it does not natively discover the repository's canonical `.claude/skills/plan-feature/SKILL.md`. The adapter therefore creates a run-scoped `$HOME/.agents/skills/plan-feature` directory symlink outside the checkout, pointing at that canonical directory. The `/plan-feature <Plane UC>` prompt remains unchanged.
+- Grok `1.0.30` reads Claude-compatible `.claude/skills` directly, so it does not need the Codex bridge.
+- Both adapters pass the native `read-only` sandbox. Grok also uses `--always-approve` only to avoid an unattended prompt; its sandbox still denies source edits. Session state remains writable in the agent runtime directory.
+- The bridge and runtime are created under the caller-provided artifact root. The source checkout is never changed. Codex auth/config are referenced through symlinks to the read-only runtime inputs; they are not copied into the runtime volume.
+
 After building the agents package, run the capability checks from a disposable checkout:
 
 ```sh
