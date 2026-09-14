@@ -60,6 +60,9 @@ test("repository workflow adds, edits suggestions, removes, and queues revalidat
         return stored;
       },
       updatePending: async (_id, input) => {
+        if (input.presetRelatedRepoIds?.includes("repo_b")) {
+          assert.equal(input.sshUrl, undefined, "suggestion-only save must not rewrite the SSH URL or trigger validation");
+        }
         stored = {
           ...stored,
           sshUrl: input.sshUrl ?? stored.sshUrl,
@@ -83,14 +86,41 @@ test("repository workflow adds, edits suggestions, removes, and queues revalidat
   const added = await workflow.add({ sshUrl: "git@github.com:owner/repo.git", presetRelatedRepoIds: ["repo_a"] });
   assert.equal(added.repository.validationStatus, "PENDING");
   const updated = await workflow.update(stored.id, {
+    sshUrl: stored.sshUrl,
     presetRelatedRepoIds: ["repo_b"],
     lastUsedRelatedRepoIds: ["repo_c"],
   });
   assert.deepEqual(updated.repository.presetRelatedRepoIds, ["repo_b"]);
   assert.deepEqual(updated.repository.lastUsedRelatedRepoIds, ["repo_c"]);
+  assert.equal(updated.jobId, null);
   await workflow.revalidate(stored.id);
   await workflow.remove(stored.id);
   assert.deepEqual(calls, ["queue:repo_invalid", "queue:repo_invalid", "remove:repo_invalid"]);
+});
+
+test("repository workflow queues revalidation when the SSH URL actually changes", async () => {
+  const calls: string[] = [];
+  let stored: Repository = invalidRepository;
+  const workflow = createRepositoryWorkflow({
+    registry: {
+      list: async () => [stored],
+      registerPending: async () => stored,
+      updatePending: async (_id, input) => {
+        stored = { ...stored, sshUrl: input.sshUrl ?? stored.sshUrl, validationStatus: input.sshUrl ? "PENDING" : stored.validationStatus };
+        return stored;
+      },
+      remove: async () => undefined,
+      get: async () => stored,
+    },
+    queueRevalidation: async (id) => {
+      calls.push(`queue:${id}`);
+      return "job_2";
+    },
+  });
+
+  const updated = await workflow.update(stored.id, { sshUrl: "git@github.com:owner/new-repo.git" });
+  assert.equal(updated.jobId, "job_2");
+  assert.deepEqual(calls, ["queue:repo_invalid"]);
 });
 
 test("invalid input and duplicate registration remain explicit API errors", async () => {
