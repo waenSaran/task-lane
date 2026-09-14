@@ -47,6 +47,10 @@ services:
       - ${HOME}/.task-lane/repos:/data/repos
       - ${HOME}/.task-lane/plans:/data/plans
       - ${HOME}/.task-lane/logs:/data/logs
+      - ${HOME}/.codex:/root/.codex:ro
+      - codex_sessions:/root/.codex/sessions
+      - ${HOME}/.grok:/root/.grok:ro
+      - grok_sessions:/root/.grok/sessions
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,3 +61,5 @@ services:
       retries: 5
 volumes:
   postgres_data:
+  codex_sessions:
+  grok_sessions:

@@ -31,9 +31,8 @@ export interface AgentProcessResult {
 
 const SENSITIVE_ENV_KEY = /(TOKEN|API[_-]?KEY|PASSWORD|SECRET|AUTH)/i;
 
-function formatChunk(text: string, now: () => Date, secrets: readonly string[]): string {
-  return text
-    .split(/\r?\n/)
+function formatLines(lines: readonly string[], now: () => Date, secrets: readonly string[]): string {
+  return lines
     .filter((line) => line.length > 0)
     .map((line) => `[${now().toISOString()}] ${redactSecrets(line, secrets)}\n`)
     .join('');
@@ -58,6 +57,8 @@ export async function runAgentProcess(request: AgentProcessRequest): Promise<Age
   const env = request.env ? { ...process.env, ...request.env } : process.env;
   let stdoutWrites = Promise.resolve();
   let stderrWrites = Promise.resolve();
+  let stdoutPending = '';
+  let stderrPending = '';
   let cancelled = request.signal?.aborted ?? false;
 
   return await new Promise<AgentProcessResult>((resolve) => {
@@ -72,6 +73,16 @@ export async function runAgentProcess(request: AgentProcessRequest): Promise<Age
       if (settled) return;
       settled = true;
       if (request.signal) request.signal.removeEventListener('abort', onAbort);
+      if (stdoutPending) {
+        const pending = formatLines([stdoutPending], now, secrets);
+        stdoutWrites = stdoutWrites.then(() => appendFile(stdoutPath, pending, 'utf8'));
+        stdoutPending = '';
+      }
+      if (stderrPending) {
+        const pending = formatLines([stderrPending], now, secrets);
+        stderrWrites = stderrWrites.then(() => appendFile(stderrPath, pending, 'utf8'));
+        stderrPending = '';
+      }
       await Promise.all([stdoutWrites, stderrWrites]);
       resolve(result);
     };
@@ -85,12 +96,18 @@ export async function runAgentProcess(request: AgentProcessRequest): Promise<Age
     if (cancelled) onAbort();
 
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      const formatted = formatChunk(String(chunk), now, secrets);
-      stdoutWrites = stdoutWrites.then(() => appendFile(stdoutPath, formatted, 'utf8'));
+      stdoutPending += String(chunk);
+      const lines = stdoutPending.split(/\r?\n/);
+      stdoutPending = lines.pop() ?? '';
+      const formatted = formatLines(lines, now, secrets);
+      if (formatted) stdoutWrites = stdoutWrites.then(() => appendFile(stdoutPath, formatted, 'utf8'));
     });
     child.stderr?.on('data', (chunk: Buffer | string) => {
-      const formatted = formatChunk(String(chunk), now, secrets);
-      stderrWrites = stderrWrites.then(() => appendFile(stderrPath, formatted, 'utf8'));
+      stderrPending += String(chunk);
+      const lines = stderrPending.split(/\r?\n/);
+      stderrPending = lines.pop() ?? '';
+      const formatted = formatLines(lines, now, secrets);
+      if (formatted) stderrWrites = stderrWrites.then(() => appendFile(stderrPath, formatted, 'utf8'));
     });
 
     child.once('error', (error) => {
