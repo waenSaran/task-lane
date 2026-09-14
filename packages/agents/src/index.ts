@@ -1,2 +1,5 @@
-// Placeholder package boundary for Task Lane's agents module.
-export {};
+export * from './artifacts.js';
+export * from './fake-agent.js';
+export * from './process-runner.js';
+export * from './redaction.js';
+export * from './types.js';
