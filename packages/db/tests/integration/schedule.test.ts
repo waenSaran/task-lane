@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   claimJob,
+  completePlaneFetchJob,
   enqueueJob,
   enqueueScheduledPlaneFetch,
+  failPlaneFetchJob,
   findJob,
   findLatestSuccessfulScheduleSlot,
   findScheduleSlot,
@@ -113,6 +115,84 @@ test("job claim type filter cannot take future planning jobs", async () => {
 
     assert.equal(claimed?.id, "plane_job");
     assert.equal((await findJob(pool, "planning_job"))?.status, "QUEUED");
+  } finally {
+    await pool.end();
+  }
+});
+
+test("Plane fetch completion updates only its scheduled slot in the same terminal transition", async () => {
+  const pool = createPool();
+  try {
+    await reset(pool);
+    const scheduledSlot = "2026-09-14|09:00|Asia/Bangkok";
+    await enqueueScheduledPlaneFetch(pool, {
+      slot: { slotKey: scheduledSlot, scheduledAt: now },
+      jobId: "scheduled_success",
+    });
+    await claimJob(pool, { workerId: "plane-worker", now, leaseDurationMs: 60_000 });
+    await completePlaneFetchJob(pool, { jobId: "scheduled_success", slotKey: scheduledSlot, completedAt: now });
+
+    await enqueueJob(pool, {
+      id: "manual_success",
+      type: "PLANE_FETCH",
+      payload: { manual: true },
+      priority: 0,
+      availableAt: now,
+    });
+    await claimJob(pool, { workerId: "plane-worker", now, leaseDurationMs: 60_000 });
+    await completePlaneFetchJob(pool, { jobId: "manual_success", slotKey: null, completedAt: now });
+
+    assert.equal((await findJob(pool, "scheduled_success"))?.status, "COMPLETED");
+    assert.equal((await findScheduleSlot(pool, scheduledSlot))?.status, "SUCCESS");
+    assert.equal((await findJob(pool, "manual_success"))?.status, "COMPLETED");
+    assert.equal((await findScheduleSlot(pool, scheduledSlot))?.status, "SUCCESS");
+  } finally {
+    await pool.end();
+  }
+});
+
+test("failed scheduled Plane fetch marks its job and only its slot failed", async () => {
+  const pool = createPool();
+  try {
+    await reset(pool);
+    const slotKey = "2026-09-14|14:00|Asia/Bangkok";
+    await enqueueScheduledPlaneFetch(pool, {
+      slot: { slotKey, scheduledAt: now },
+      jobId: "scheduled_failure",
+    });
+    await claimJob(pool, { workerId: "plane-worker", now, leaseDurationMs: 60_000 });
+    await failPlaneFetchJob(pool, {
+      jobId: "scheduled_failure",
+      slotKey,
+      completedAt: now,
+      error: { code: "PLANE_FETCH_FAILED", message: "Plane fetch failed" },
+    });
+
+    assert.equal((await findJob(pool, "scheduled_failure"))?.status, "FAILED");
+    assert.equal((await findScheduleSlot(pool, slotKey))?.status, "FAILED");
+  } finally {
+    await pool.end();
+  }
+});
+
+test("a schedule slot cannot finish unless its leased queue job also finishes", async () => {
+  const pool = createPool();
+  try {
+    await reset(pool);
+    const slotKey = "2026-09-14|14:00|Asia/Bangkok";
+    await enqueueScheduledPlaneFetch(pool, {
+      slot: { slotKey, scheduledAt: now },
+      jobId: "unleased_scheduled_job",
+    });
+
+    await assert.rejects(() => completePlaneFetchJob(pool, {
+      jobId: "unleased_scheduled_job",
+      slotKey,
+      completedAt: now,
+    }));
+
+    assert.equal((await findJob(pool, "unleased_scheduled_job"))?.status, "QUEUED");
+    assert.equal((await findScheduleSlot(pool, slotKey))?.status, "PENDING");
   } finally {
     await pool.end();
   }

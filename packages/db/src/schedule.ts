@@ -1,6 +1,6 @@
 import type { FailureDetails } from "@task-lane/domain";
 import type { Pool, PoolClient } from "pg";
-import { enqueueJob } from "./jobs.js";
+import { completeJob, enqueueJob, failJob } from "./jobs.js";
 import { withTransaction } from "./transaction.js";
 
 type DbQueryable = Pool | PoolClient;
@@ -106,4 +106,24 @@ export async function markScheduleSlotFailed(
      where slot_key = $1`,
     [slotKey, completedAt, JSON.stringify(error)],
   );
+}
+
+export async function completePlaneFetchJob(
+  pool: Pool,
+  input: { jobId: string; slotKey: string | null; completedAt: Date },
+): Promise<void> {
+  await withTransaction(pool, async (tx) => {
+    if (!(await completeJob(tx, input.jobId))) throw new Error("Plane fetch job is not leased");
+    if (input.slotKey) await markScheduleSlotSuccess(tx, input.slotKey, input.completedAt);
+  });
+}
+
+export async function failPlaneFetchJob(
+  pool: Pool,
+  input: { jobId: string; slotKey: string | null; completedAt: Date; error: FailureDetails },
+): Promise<void> {
+  await withTransaction(pool, async (tx) => {
+    if (!(await failJob(tx, input.jobId, input.error))) throw new Error("Plane fetch job is not leased");
+    if (input.slotKey) await markScheduleSlotFailed(tx, input.slotKey, input.completedAt, input.error);
+  });
 }

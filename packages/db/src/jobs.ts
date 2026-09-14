@@ -99,22 +99,24 @@ export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<J
   return row ? mapJob(row) : null;
 }
 
-export async function completeJob(db: DbQueryable, id: string): Promise<void> {
-  await db.query(
+export async function completeJob(db: DbQueryable, id: string): Promise<boolean> {
+  const result = await db.query(
     `update jobs
      set status = 'COMPLETED', lease_owner = null, lease_expires_at = null, updated_at = now()
      where id = $1 and status = 'LEASED'`,
     [id],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
-export async function failJob(db: DbQueryable, id: string, error: FailureDetails): Promise<void> {
-  await db.query(
+export async function failJob(db: DbQueryable, id: string, error: FailureDetails): Promise<boolean> {
+  const result = await db.query(
     `update jobs
      set status = 'FAILED', error = $2::jsonb, lease_owner = null, lease_expires_at = null, updated_at = now()
      where id = $1 and status = 'LEASED'`,
     [id, JSON.stringify(error)],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
 export async function failExpiredJobs(db: DbQueryable, now: Date): Promise<number> {
