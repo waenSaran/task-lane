@@ -114,3 +114,32 @@ test('FakeAgentAdapter never persists the instruction text to stdout or stderr a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('FakeAgentAdapter keeps machine handoff envelope fields authoritative', async () => {
+  const mod = await import('../dist/index.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-agent-'));
+  try {
+    const handoffPath = path.join(root, 'handoff-authoritative.json');
+    const adapter = new mod.FakeAgentAdapter({
+      scenarios: [{
+        status: 'READY_FOR_REVIEW',
+        handoff: {
+          contractVersion: '999',
+          runId: 'wrong-run',
+          status: 'PUBLISHED',
+          planeId: 'WRONG-1',
+          extra: 'kept',
+        },
+      }],
+    });
+    await adapter.start(request(root, 'run-authoritative', handoffPath));
+    const handoff = JSON.parse(await readFile(handoffPath, 'utf8'));
+    assert.equal(handoff.contractVersion, '1.0');
+    assert.equal(handoff.runId, 'run-authoritative');
+    assert.equal(handoff.status, 'READY_FOR_REVIEW');
+    assert.equal(handoff.planeId, 'FAKE-1');
+    assert.equal(handoff.extra, 'kept');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

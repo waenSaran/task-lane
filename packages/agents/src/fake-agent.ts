@@ -107,11 +107,11 @@ export class FakeAgentAdapter implements AgentAdapter {
       await writeFile(
         request.handoffPath,
         `${JSON.stringify({
+          ...scenario.handoff,
           contractVersion: '1.0',
           runId: request.runId,
           status: scenario.status,
           planeId: 'FAKE-1',
-          ...scenario.handoff,
         }, null, 2)}\n`,
         'utf8',
       );
