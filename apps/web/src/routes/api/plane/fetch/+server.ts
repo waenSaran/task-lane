@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { enqueuePlaneFetchJob } from "@task-lane/plane";
-import { createManualPlaneFetch } from "../../../../src/manual-plane-fetch";
-import { getPool } from "../../../../src/postgres";
-
-export const dynamic = "force-dynamic";
+import { createManualPlaneFetch } from "../../../../manual-plane-fetch.js";
+import { getPool } from "../../../../postgres.js";
 
 const queueManualPlaneFetch = createManualPlaneFetch({
   createId: randomUUID,

@@ -1,3 +1,0 @@
-import type { NextConfig } from "next";
-const nextConfig: NextConfig = { output: "standalone", transpilePackages: ["@task-lane/db"] };
-export default nextConfig;
