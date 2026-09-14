@@ -122,19 +122,20 @@ export class RepositoryRegistry {
   async registerPending(input: RegisterRepositoryInput): Promise<Repository> {
     const parsed = parseGithubSshUrl(input.sshUrl, this.dependencies.checkoutRoot);
     const existing = await this.dependencies.store.findBySshUrl(parsed.normalizedSshUrl);
+    if (existing) throw new DuplicateRepositoryError();
     const now = iso(this.now);
     const repository: Repository = {
-      id: existing?.id ?? parsed.id,
+      id: parsed.id,
       name: parsed.name,
       sshUrl: parsed.normalizedSshUrl,
-      localPath: existing?.localPath ?? parsed.localPath,
+      localPath: parsed.localPath,
       validationStatus: "PENDING",
-      lastSyncedSha: existing?.lastSyncedSha ?? null,
-      lastUsedAgent: existing?.lastUsedAgent ?? null,
-      presetRelatedRepoIds: input.presetRelatedRepoIds ? uniqueIds(input.presetRelatedRepoIds) : existing?.presetRelatedRepoIds ?? [],
-      lastUsedRelatedRepoIds: existing?.lastUsedRelatedRepoIds ?? [],
+      lastSyncedSha: null,
+      lastUsedAgent: null,
+      presetRelatedRepoIds: uniqueIds(input.presetRelatedRepoIds),
+      lastUsedRelatedRepoIds: [],
       validationReport: null,
-      createdAt: existing?.createdAt ?? now,
+      createdAt: now,
       updatedAt: now,
     };
     await this.dependencies.store.save(repository);

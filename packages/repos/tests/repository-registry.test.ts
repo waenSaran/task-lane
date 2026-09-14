@@ -253,8 +253,10 @@ test("registry CRUD, normalized duplicates, explicit related preferences, and pr
     prerequisites: [],
   }));
   const first = await registry.register({ sshUrl: "git@github.com:owner/repo.git" });
-  const duplicate = await registry.register({ sshUrl: "ssh://git@github.com/OWNER/REPO" });
-  assert.equal(duplicate.id, first.id);
+  await assert.rejects(
+    registry.register({ sshUrl: "ssh://git@github.com/OWNER/REPO" }),
+    DuplicateRepositoryError,
+  );
   assert.equal((await registry.list()).length, 1);
   const updated = await registry.updateRelatedRepositories(first.id, {
     presetRelatedRepoIds: ["related_1"],

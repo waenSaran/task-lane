@@ -32,3 +32,18 @@ test("SvelteKit server routes own the existing HTTP endpoints", async () => {
   assert.match(fetchRoute, /status: 202/);
   assert.match(fetchRoute, /status: 503/);
 });
+
+test("repository management routes expose CRUD and worker revalidation", async () => {
+  const listRoute = await readFile(new URL("../src/routes/api/repositories/+server.ts", import.meta.url), "utf8");
+  const itemRoute = await readFile(new URL("../src/routes/api/repositories/[id]/+server.ts", import.meta.url), "utf8");
+  const revalidateRoute = await readFile(new URL("../src/routes/api/repositories/[id]/revalidate/+server.ts", import.meta.url), "utf8");
+
+  assert.match(listRoute, /export const GET/);
+  assert.match(listRoute, /export const POST/);
+  assert.match(itemRoute, /export const PATCH/);
+  assert.match(itemRoute, /export const DELETE/);
+  assert.match(revalidateRoute, /export const POST/);
+  assert.match(listRoute, /queueRepositoryRevalidation/);
+  assert.doesNotMatch(listRoute, /runGit|execFile|spawn/);
+  assert.doesNotMatch(revalidateRoute, /runGit|execFile|spawn/);
+});
