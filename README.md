@@ -2,7 +2,7 @@
 
 Task Lane is a localhost-only orchestration UI for the Plane + `/plan-feature` workflow.
 
-The current foundation provides the TypeScript monorepo, Next.js web app, Node worker, PostgreSQL runtime, Docker Compose configuration, service health probes, and the canonical web UI foundation.
+The current foundation provides the TypeScript monorepo, SvelteKit web/API app, Node worker, PostgreSQL runtime, Docker Compose configuration, service health probes, and the canonical web UI foundation.
 
 ## Prerequisites
 
@@ -46,25 +46,27 @@ pnpm build
 
 The canonical Task Lane UI stack is:
 
-- Next.js 16 + React 19 + TypeScript
-- Tailwind CSS v4
-- shadcn/ui
-- Base UI primitives (`@base-ui/react`)
-- Lucide React icons
+- SvelteKit + Svelte 5 + TypeScript
+- Tailwind CSS v4 through the Vite integration
+- shadcn-svelte conventions
+- Bits UI primitives
+- `@lucide/svelte` icons
+- SvelteKit adapter-node for the local Node server
 
-shadcn configuration lives at `apps/web/components.json`. Add components from the repository root with the pnpm runner, for example:
+shadcn-svelte configuration lives at `apps/web/components.json`. Add components from `apps/web`, for example:
 
 ```bash
-pnpm dlx shadcn@latest add button -c apps/web
+cd apps/web
+pnpm dlx shadcn-svelte@latest add button
 ```
 
 Coding-agent rules, including the requirement to reuse this UI stack instead of adding another component/styling system, live in `AGENTS.md`.
 
 ## Architecture boundary
 
-- `apps/web`: Next.js dashboard/API process
+- `apps/web`: SvelteKit dashboard/API process
 - `apps/worker`: separate Node.js worker process
 - `packages/*`: shared domain/integration boundaries
-- `postgres`: state store and future DB-backed queue
+- `postgres`: state store and DB-backed queue
 
-Task Lane itself will remain read-only toward Plane; Plane writes belong to `/plan-feature` in later milestones.
+Task Lane remains read-only toward Plane; Plane writes belong to `/plan-feature`.
