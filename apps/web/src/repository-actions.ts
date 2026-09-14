@@ -55,8 +55,16 @@ export function createRepositoryWorkflow(dependencies: RepositoryWorkflowDepende
     },
     update: async (id: string, body: unknown) => {
       const input = parseRepositoryInput(body, false);
-      const repository = await dependencies.registry.updatePending(id, input);
-      const jobId = input.sshUrl === undefined ? null : await dependencies.queueRevalidation(repository.id);
+      const current = await dependencies.registry.get(id);
+      const sshUrlChanged = input.sshUrl !== undefined && input.sshUrl !== current.sshUrl;
+      const updateInput = sshUrlChanged
+        ? input
+        : {
+            presetRelatedRepoIds: input.presetRelatedRepoIds,
+            lastUsedRelatedRepoIds: input.lastUsedRelatedRepoIds,
+          };
+      const repository = await dependencies.registry.updatePending(id, updateInput);
+      const jobId = sshUrlChanged ? await dependencies.queueRevalidation(repository.id) : null;
       return { repository, jobId };
     },
     remove: (id: string) => dependencies.registry.remove(id),
