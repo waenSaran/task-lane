@@ -10,12 +10,16 @@ import type {
 } from "@task-lane/domain";
 import { migrate } from "../../src/migrate.ts";
 import {
+  assignPrimaryRepository,
+  deleteRepository,
   findPlanRevision,
   findPlanningCase,
   findPlanningRun,
   findRepository,
+  findRepositoryBySshUrl,
   findReviewFeedback,
   findSettings,
+  listRepositories,
   savePlanRevision,
   savePlanningCase,
   savePlanningRun,
@@ -37,6 +41,7 @@ function fixtures() {
     validationStatus: "VALID",
     lastSyncedSha: "abc123",
     lastUsedAgent: "CODEX",
+    presetRelatedRepoIds: [],
     lastUsedRelatedRepoIds: [],
     validationReport: { checkedAt: now, errors: [], warnings: [] },
     createdAt: now,
@@ -151,6 +156,8 @@ test("core domain records can be created, read, updated, and rolled back transac
     });
 
     assert.deepEqual(await findRepository(pool, repository.id), repository);
+    assert.deepEqual(await findRepositoryBySshUrl(pool, repository.sshUrl), repository);
+    assert.deepEqual(await listRepositories(pool), [repository]);
     assert.deepEqual(await findPlanningCase(pool, planningCase.id), planningCase);
     assert.deepEqual(await findPlanningRun(pool, planningRun.id), planningRun);
     assert.deepEqual(await findPlanRevision(pool, revision.id), revision);
@@ -167,6 +174,17 @@ test("core domain records can be created, read, updated, and rolled back transac
     await withTransaction(pool, (tx) => savePlanningCase(tx, updatedCase));
     assert.deepEqual(await findPlanningCase(pool, planningCase.id), updatedCase);
 
+    const invalidRepository = {
+      ...repository,
+      id: "repo_invalid",
+      name: "invalid",
+      sshUrl: "git@github.com:example/invalid.git",
+      validationStatus: "INVALID" as const,
+    };
+    await saveRepository(pool, invalidRepository);
+    await assert.rejects(savePlanningCase(pool, { ...planningCase, primaryRepoId: invalidRepository.id }), /must be VALID/);
+    assert.equal(await assignPrimaryRepository(pool, planningCase.id, invalidRepository.id, now), false);
+
     await assert.rejects(
       withTransaction(pool, async (tx) => {
         await saveRepository(tx, {
@@ -181,6 +199,8 @@ test("core domain records can be created, read, updated, and rolled back transac
       /rollback/,
     );
     assert.equal(await findRepository(pool, "repo_rollback"), null);
+    assert.equal(await deleteRepository(pool, invalidRepository.id), true);
+    assert.equal(await findRepository(pool, invalidRepository.id), null);
   } finally {
     await pool.end();
   }

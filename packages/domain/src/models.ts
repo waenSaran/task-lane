@@ -82,6 +82,7 @@ export interface Repository {
   validationStatus: RepositoryValidationStatus;
   lastSyncedSha: string | null;
   lastUsedAgent: AgentKind | null;
+  presetRelatedRepoIds: readonly string[];
   lastUsedRelatedRepoIds: readonly string[];
   validationReport: RepositoryValidationReport | null;
   createdAt: IsoDateTime;

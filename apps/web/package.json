@@ -15,7 +15,9 @@
   "dependencies": {
     "@lucide/svelte": "1.45.0",
     "@task-lane/db": "workspace:*",
+    "@task-lane/domain": "workspace:*",
     "@task-lane/plane": "workspace:*",
+    "@task-lane/repos": "workspace:*",
     "bits-ui": "2.19.2",
     "clsx": "2.1.1",
     "pg": "8.23.0",

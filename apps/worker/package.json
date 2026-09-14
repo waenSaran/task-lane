@@ -11,6 +11,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
-  "dependencies": { "@task-lane/db": "workspace:*", "@task-lane/planning": "workspace:*", "@task-lane/plane": "workspace:*", "pg": "8.23.0" },
+  "dependencies": { "@task-lane/db": "workspace:*", "@task-lane/planning": "workspace:*", "@task-lane/plane": "workspace:*", "@task-lane/repos": "workspace:*", "pg": "8.23.0" },
   "devDependencies": { "@types/node": "^24.0.0", "@types/pg": "^8.15.0", "tsx": "^4.20.0", "typescript": "5.9.2" }
 }

@@ -8,7 +8,7 @@ import type {
 } from "@task-lane/domain";
 import type { Pool, PoolClient } from "pg";
 
-type DbQueryable = Pool | PoolClient;
+export type DbQueryable = Pool | PoolClient;
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
@@ -26,6 +26,7 @@ interface RepositoryRow {
   validation_status: Repository["validationStatus"];
   last_synced_sha: string | null;
   last_used_agent: Repository["lastUsedAgent"];
+  preset_related_repo_ids: string[];
   last_used_related_repo_ids: string[];
   validation_report: Repository["validationReport"];
   created_at: Date | string;
@@ -41,6 +42,7 @@ function mapRepository(row: RepositoryRow): Repository {
     validationStatus: row.validation_status,
     lastSyncedSha: row.last_synced_sha,
     lastUsedAgent: row.last_used_agent,
+    presetRelatedRepoIds: row.preset_related_repo_ids,
     lastUsedRelatedRepoIds: row.last_used_related_repo_ids,
     validationReport: row.validation_report,
     createdAt: iso(row.created_at),
@@ -52,8 +54,8 @@ export async function saveRepository(db: DbQueryable, value: Repository): Promis
   await db.query(
     `insert into repositories (
       id, name, ssh_url, local_path, validation_status, last_synced_sha, last_used_agent,
-      last_used_related_repo_ids, validation_report, created_at, updated_at
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11)
+      preset_related_repo_ids, last_used_related_repo_ids, validation_report, created_at, updated_at
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12)
     on conflict (id) do update set
       name = excluded.name,
       ssh_url = excluded.ssh_url,
@@ -61,6 +63,7 @@ export async function saveRepository(db: DbQueryable, value: Repository): Promis
       validation_status = excluded.validation_status,
       last_synced_sha = excluded.last_synced_sha,
       last_used_agent = excluded.last_used_agent,
+      preset_related_repo_ids = excluded.preset_related_repo_ids,
       last_used_related_repo_ids = excluded.last_used_related_repo_ids,
       validation_report = excluded.validation_report,
       created_at = excluded.created_at,
@@ -73,6 +76,7 @@ export async function saveRepository(db: DbQueryable, value: Repository): Promis
       value.validationStatus,
       value.lastSyncedSha,
       value.lastUsedAgent,
+      [...value.presetRelatedRepoIds],
       [...value.lastUsedRelatedRepoIds],
       JSON.stringify(value.validationReport),
       value.createdAt,
@@ -84,6 +88,48 @@ export async function saveRepository(db: DbQueryable, value: Repository): Promis
 export async function findRepository(db: DbQueryable, id: string): Promise<Repository | null> {
   const result = await db.query<RepositoryRow>("select * from repositories where id = $1", [id]);
   return result.rows[0] ? mapRepository(result.rows[0]) : null;
+}
+
+export async function findRepositoryBySshUrl(db: DbQueryable, sshUrl: string): Promise<Repository | null> {
+  const result = await db.query<RepositoryRow>("select * from repositories where lower(ssh_url) = lower($1)", [sshUrl]);
+  return result.rows[0] ? mapRepository(result.rows[0]) : null;
+}
+
+export async function listRepositories(db: DbQueryable): Promise<Repository[]> {
+  const result = await db.query<RepositoryRow>("select * from repositories order by name asc, id asc");
+  return result.rows.map(mapRepository);
+}
+
+export async function deleteRepository(db: DbQueryable, id: string): Promise<boolean> {
+  const result = await db.query("delete from repositories where id = $1", [id]);
+  return result.rowCount === 1;
+}
+
+export async function assignPrimaryRepository(
+  db: DbQueryable,
+  planningCaseId: string,
+  repositoryId: string,
+  updatedAt: string,
+): Promise<boolean> {
+  const result = await db.query(
+    `update planning_cases as planning_case
+     set primary_repo_id = $2, updated_at = $3
+     from repositories as repository
+     where planning_case.id = $1
+       and repository.id = $2
+       and repository.validation_status = 'VALID'`,
+    [planningCaseId, repositoryId, updatedAt],
+  );
+  return result.rowCount === 1;
+}
+
+export async function clearPrimaryRepositoryAssignments(db: DbQueryable, repositoryId: string): Promise<void> {
+  await db.query(
+    `update planning_cases
+     set primary_repo_id = null, updated_at = now()
+     where primary_repo_id = $1`,
+    [repositoryId],
+  );
 }
 
 interface PlanningCaseRow {
@@ -119,6 +165,15 @@ function mapPlanningCase(row: PlanningCaseRow): PlanningCase {
 }
 
 export async function savePlanningCase(db: DbQueryable, value: PlanningCase): Promise<void> {
+  if (value.primaryRepoId) {
+    const repository = await db.query<{ validation_status: Repository["validationStatus"] }>(
+      "select validation_status from repositories where id = $1",
+      [value.primaryRepoId],
+    );
+    if (repository.rows[0]?.validation_status !== "VALID") {
+      throw new Error("Primary repository must be VALID");
+    }
+  }
   await db.query(
     `insert into planning_cases (
       id, plane_issue_id, plane_identifier, title, current_status, previous_status, eligibility,

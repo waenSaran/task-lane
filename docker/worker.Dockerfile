@@ -5,7 +5,7 @@ FROM node:24.21.0-bookworm-slim AS cli-runtime
 ARG CODEX_VERSION
 ARG GROK_VERSION
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl git openssh-client \
   && rm -rf /var/lib/apt/lists/* \
   && npm install --global "@openai/codex@${CODEX_VERSION}" \
   && export GROK_BIN_DIR=/usr/local/bin \
@@ -20,8 +20,7 @@ RUN corepack enable && corepack prepare pnpm@12.4.1 --activate
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile=false
-RUN pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/agents build && pnpm --filter @task-lane/worker build
-RUN pnpm --filter @task-lane/planning build
+RUN pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/repos build && pnpm --filter @task-lane/agents build && pnpm --filter @task-lane/planning build && pnpm --filter @task-lane/worker build
 RUN node --input-type=module -e "const planning = await import('./packages/planning/dist/index.js'); if (typeof planning.writePlanFeatureHandoff !== 'function' || typeof planning.TaskLanePlanFeatureRunner !== 'function') throw new Error('Task Lane planning runtime is unavailable');"
 FROM cli-runtime AS runtime
 ENV NODE_ENV=production
