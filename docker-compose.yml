@@ -54,6 +54,7 @@ services:
       - codex_runtime:/root/.codex
       - ${HOME}/.grok:/host-config/.grok:ro
       - grok_runtime:/root/.grok
+      - ${HOME}/.ssh:/root/.ssh:ro
     depends_on:
       postgres:
         condition: service_healthy

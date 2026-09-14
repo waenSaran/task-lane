@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 
 const migrations = [
   { version: "001_initial", url: new URL("../migrations/001_initial.sql", import.meta.url) },
+  { version: "002_repository_preferences", url: new URL("../migrations/002_repository_preferences.sql", import.meta.url) },
 ] as const;
 
 async function ensureMigrationTable(client: PoolClient): Promise<void> {

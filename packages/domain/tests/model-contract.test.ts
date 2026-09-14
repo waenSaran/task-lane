@@ -70,6 +70,7 @@ const repository: Repository = {
   validationStatus: "VALID",
   lastSyncedSha: null,
   lastUsedAgent: null,
+  presetRelatedRepoIds: [],
   lastUsedRelatedRepoIds: [],
   validationReport: null,
   createdAt: now,
