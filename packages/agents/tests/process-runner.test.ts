@@ -92,6 +92,24 @@ test('process runner streams redacted output before the process exits', async ()
   }
 });
 
+test('process runner preserves machine-readable lines split across output chunks', async () => {
+  const mod = await import('../dist/index.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-agent-'));
+  try {
+    const result = await mod.runAgentProcess({
+      command: process.execPath,
+      args: ['-e', "process.stdout.write('{\\\"type\\\":\\\"thread.'); setTimeout(() => process.stdout.write('started\\\",\\\"thread_id\\\":\\\"session-1\\\"}\\n'), 20)"],
+      cwd: process.cwd(),
+      artifactRoot: root,
+      runId: 'run-split-json',
+    });
+    const stdout = await readFile(result.stdoutPath, 'utf8');
+    assert.match(stdout, /\{"type":"thread\.started","thread_id":"session-1"\}/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('process runner treats provided environment as additions and redacts sensitive values automatically', async () => {
   const mod = await import('../dist/index.js');
   const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-agent-'));

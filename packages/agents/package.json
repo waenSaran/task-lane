@@ -15,6 +15,9 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "pnpm build && node --experimental-strip-types --test tests/*.test.ts"
   },
+  "dependencies": {
+    "@task-lane/domain": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "5.9.2"

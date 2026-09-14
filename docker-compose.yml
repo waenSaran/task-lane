@@ -43,10 +43,17 @@ services:
       PLANE_WORKSPACE_SLUG: ${PLANE_WORKSPACE_SLUG:-}
       PLANE_PROJECT_ID: ${PLANE_PROJECT_ID:-}
       PLANE_ELIGIBLE_ASSIGNEE: ${PLANE_ELIGIBLE_ASSIGNEE:-saranya.h}
+      TASK_LANE_REPO_ROOT: /data/repos
+      TASK_LANE_AGENT_REPO_ROOT: /data/agent-repos
     volumes:
       - ${HOME}/.task-lane/repos:/data/repos
+      - ${HOME}/.task-lane/repos:/data/agent-repos:ro
       - ${HOME}/.task-lane/plans:/data/plans
       - ${HOME}/.task-lane/logs:/data/logs
+      - ${HOME}/.codex:/host-config/.codex:ro
+      - codex_runtime:/root/.codex
+      - ${HOME}/.grok:/host-config/.grok:ro
+      - grok_runtime:/root/.grok
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,3 +64,5 @@ services:
       retries: 5
 volumes:
   postgres_data:
+  codex_runtime:
+  grok_runtime:
