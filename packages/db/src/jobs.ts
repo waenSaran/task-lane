@@ -15,6 +15,7 @@ export interface ClaimJobInput {
   workerId: string;
   now: Date;
   leaseDurationMs: number;
+  types?: readonly string[];
 }
 
 interface JobRow {
@@ -70,11 +71,14 @@ export async function findJob(db: DbQueryable, id: string): Promise<Job | null> 
 }
 
 export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<Job | null> {
+  const types = input.types && input.types.length > 0 ? Array.from(input.types) : null;
   const result = await db.query<JobRow>(
     `with candidate as (
        select id
        from jobs
-       where status = 'QUEUED' and available_at <= $1
+       where status = 'QUEUED'
+         and available_at <= $1
+         and ($4::text[] is null or type = any($4::text[]))
        order by priority desc, available_at asc, created_at asc
        for update skip locked
        limit 1
@@ -89,7 +93,7 @@ export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<J
      from candidate
      where job.id = candidate.id
      returning job.*`,
-    [input.now, input.workerId, input.leaseDurationMs],
+    [input.now, input.workerId, input.leaseDurationMs, types],
   );
   const row = result.rows[0];
   return row ? mapJob(row) : null;
