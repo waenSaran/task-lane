@@ -1,10 +1,12 @@
 # `/plan-feature` Handoff Contract
 
-This document defines the machine boundary between Task Lane and the existing `/plan-feature` coding-agent skill. It is intentionally small and deterministic so Task Lane never has to infer workflow state from prose output.
+This document defines the deterministic machine boundary Task Lane places around the existing `/plan-feature` coding-agent skill. Task Lane must never infer workflow state from prose output and must not modify or duplicate the skill's business/readiness logic.
+
+See `docs/ARCHITECTURE_DECISIONS.md` for the accepted ownership decision.
 
 ## Ownership
 
-`/plan-feature` remains the source of truth for:
+The existing `/plan-feature` remains the source of truth for:
 
 - planning readiness and business ambiguity decisions
 - combined implementation-plan drafting
@@ -12,38 +14,69 @@ This document defines the machine boundary between Task Lane and the existing `/
 - TASK tree design
 - TASK creation/reconciliation after approval
 - `plan-publish`, `plan-ready`, readiness checks, comments, labels, and assignments in Plane
+- all Plane writes
 
-Task Lane owns orchestration, persistence, review UI, stale invalidation, retries, and run history.
+Task Lane owns:
 
-## Invocation environment
+- orchestration and agent invocation
+- persistence and review UI
+- stale invalidation, retries, and run history
+- the machine handoff protocol
+- a Task Lane-owned handoff helper
+- mechanical verification of run IDs, Plane IDs, file identities, hashes, schema, and protocol version
 
-Before invoking `/plan-feature`, the worker sets:
+Task Lane must not recreate `/plan-feature` readiness semantics or business decisions.
+
+## Canonical execution flow
+
+```text
+Task Lane
+  -> AgentAdapter
+  -> TaskLanePlanFeatureRunner
+  -> Codex/Grok
+  -> existing /plan-feature unchanged
+  -> agent observes the skill's terminal workflow boundary
+  -> Task Lane-owned handoff helper writes strict JSON
+  -> TaskLanePlanFeatureRunner validates the handoff
+```
+
+The Task Lane helper serializes terminal facts; it does not decide business readiness itself.
+
+## Invocation environment and stale-output safety
+
+Before invoking the agent, the runner provides at minimum:
 
 ```text
 TASK_LANE_RUN_ID=<planning run id>
 TASK_LANE_HANDOFF_PATH=<absolute writable path for handoff JSON>
 ```
 
-The skill writes the handoff atomically: write a temporary file first, then rename/replace the configured handoff path only after the JSON is complete.
+The active runner context also knows the expected Plane UC identifier and validates the returned `planeId` against it.
 
-A process exit without a valid handoff is a technical worker/agent failure.
+Before each start or resume attempt, Task Lane must clear or rotate any prior handoff at the destination path so a stale artifact cannot be mistaken for the current run's output.
+
+The Task Lane-owned helper writes handoff JSON atomically: write a temporary file in the same filesystem, close it, then rename/replace `TASK_LANE_HANDOFF_PATH` only after the JSON is complete.
+
+A process exit without one valid current handoff is a technical worker/agent failure, even when the process exit code is `0`.
 
 ## Contract version
 
 Current contract version: `1.0`.
 
-Every handoff MUST contain `contractVersion` and `runId`. Task Lane must reject unsupported contract versions instead of guessing how to interpret them.
+Every handoff MUST contain `contractVersion`, `runId`, `status`, and `planeId`.
 
-## Skill statuses
+Task Lane must reject unsupported versions instead of guessing how to interpret them.
 
-The skill may emit these terminal handoff statuses:
+## Terminal statuses
 
-- `READY_FOR_REVIEW` — draft and `/plan-check` are ready for human review; no Plane publication has happened yet.
-- `BA_REVIEW_REQUIRED` — planning stopped because business/requirement information is materially unresolved. `/plan-feature` owns the Plane-side BA handoff.
-- `PUBLISHED` — the approved draft was published/reconciled successfully in Plane.
-- `STALE_DRAFT` — the draft/hash approved by the user no longer matches the draft presented for publication; no Plane publication may occur.
+The Task Lane handoff protocol supports exactly these terminal statuses in v1:
 
-Technical failures such as CLI crashes, auth failures, invalid JSON, missing files, or process termination are not skill statuses. The worker records those as a failed `PlanningRun`.
+- `READY_FOR_REVIEW` — the existing skill completed its draft/readiness flow and `/plan-check`; no Plane publication has happened yet.
+- `BA_REVIEW_REQUIRED` — the existing skill stopped because material business/requirement information is unresolved and completed its normal BA handling.
+- `PUBLISHED` — the approved draft completed the existing skill's publication/reconciliation/readiness flow successfully.
+- `STALE_DRAFT` — mechanical verification proves the exact approved draft identity no longer matches the draft that would be published; no publication may proceed.
+
+Technical failures such as CLI crashes, auth failures, missing/corrupt JSON, mismatched run/Plane IDs, unsupported versions, filesystem failures, or process termination are not workflow statuses. The worker records them as technical `PlanningRun` failures.
 
 ## Base envelope
 
@@ -56,11 +89,15 @@ Technical failures such as CLI crashes, auth failures, invalid JSON, missing fil
 }
 ```
 
-`runId` MUST equal `TASK_LANE_RUN_ID`.
+Validation requires:
+
+- `runId` equals the active planning run ID
+- `planeId` equals the Plane UC expected by the active Task Lane invocation
+- `status` is one of the supported terminal statuses
 
 ## `READY_FOR_REVIEW`
 
-A ready handoff includes the exact draft artifact and the requirement source fingerprint used to produce it.
+A ready handoff includes the exact draft artifact and the requirement source fingerprint associated with the skill run.
 
 ```json
 {
@@ -85,13 +122,16 @@ A ready handoff includes the exact draft artifact and the requirement source fin
 }
 ```
 
+The helper may compute file hashes mechanically, but Task Lane must not decide whether the business plan is ready. `READY_FOR_REVIEW` is valid only after the existing `/plan-feature` flow has reached that terminal boundary.
+
 Task Lane then:
 
-1. verifies the draft file exists
-2. verifies its SHA-256 matches the handoff
-3. copies it to immutable persistent storage, for example `/data/plans/<case-id>/<run-id>/v001.md`
-4. stores revision metadata in PostgreSQL
-5. presents that immutable revision for review
+1. verifies the handoff schema/version/run/Plane identity
+2. verifies the draft file exists
+3. verifies its SHA-256 matches the handoff
+4. copies it to immutable persistent storage, for example `/data/plans/<case-id>/<run-id>/v001.md`
+5. stores revision metadata in PostgreSQL
+6. presents that immutable revision for review
 
 Every requested revision produces a new immutable `PlanRevision`; do not overwrite a prior reviewed draft.
 
@@ -112,11 +152,11 @@ Example:
 }
 ```
 
-Task Lane records the case as BA review and does not retry automatically. It must not recreate or second-guess the skill's business reasoning.
+The handoff may report `BA_REVIEW_REQUIRED` only after the existing skill has reached its normal BA terminal boundary. Task Lane records the case as BA review and does not recreate or second-guess the skill's reasoning.
 
 When Plane later returns the UC from `BA-review` to the configured `DEV-review` eligibility state, Task Lane may resume/re-plan with the remembered repositories and agent, subject to repository availability.
 
-## Approval safety
+## Approval safety and `STALE_DRAFT`
 
 Approval is tied to one exact immutable revision.
 
@@ -128,9 +168,15 @@ approvedDraftSha256
 approvedAt
 ```
 
-On approval, the worker resumes the agent with the exact reviewed draft identity/hash. Before any Plane writes, `/plan-feature` MUST verify that the draft SHA-256 still matches the approved hash.
+Before an approval-triggered publication continuation, the Task Lane bridge mechanically verifies that the current draft bytes still match `approvedDraftSha256`.
 
-If the hash does not match, the skill emits `STALE_DRAFT` and performs no publication.
+If they do not match:
+
+1. write a valid `STALE_DRAFT` handoff for the active run
+2. perform no publication continuation
+3. treat the run as a protocol-level stale result, not as successful publication
+
+This hash comparison is mechanical identity verification; it is not planning/business logic.
 
 A fresh-session fallback must restore the persisted reviewed draft to the expected local draft path and verify its hash before continuing.
 
@@ -150,11 +196,13 @@ Example:
 }
 ```
 
-Task Lane may mark the planning run complete only after receiving a valid `PUBLISHED` handoff. It should not infer publication by scraping natural-language output or by merely observing that the Plane UC still matches queue labels.
+`PUBLISHED` may be written only after the existing `/plan-feature` flow has completed its publication/reconciliation/readiness work successfully.
+
+Task Lane may mark the planning run complete only after receiving and validating this handoff. It must not infer publication by scraping natural-language output or by merely observing Plane queue labels.
 
 ## Requirement fingerprint and stale checks
 
-The handoff provides exact requirement source IDs/hashes plus an aggregate hash. Task Lane uses these for conservative invalidation, not to reproduce `/plan-feature` readiness semantics.
+The handoff can carry exact requirement source IDs/hashes plus an aggregate hash. Task Lane uses these for conservative mechanical invalidation, not to reproduce `/plan-feature` readiness semantics.
 
 Before review/approval, Task Lane refetches the relevant Plane source family and compares it with the recorded fingerprint. Any relevant change may mark the case `STALE` and require a new planning run.
 
@@ -164,16 +212,31 @@ After a run is already `PUBLISHED`, a later requirements change becomes `REPLAN_
 
 Task Lane treats the handoff as invalid if any of these are true:
 
+- no current handoff exists after the agent attempt completes
 - JSON cannot be parsed
 - `contractVersion` is unsupported
 - `runId` does not match the active run
+- `planeId` does not match the active Plane UC
 - `status` is unknown
 - required fields for the emitted status are missing
 - a referenced draft does not exist
 - a referenced draft SHA-256 does not match
+- the file is demonstrably stale output from another attempt
 
 Invalid handoff is a technical failure. Do not silently fall back to parsing stdout.
 
+## Agent/adaptor responsibility
+
+Task Lane presents an agent-agnostic `/plan-feature <Plane UC>` operation to the planning runner.
+
+An adapter may translate that operation into the exact explicit skill-invocation syntax required by its pinned CLI. The translation must preserve the same canonical existing skill and must not create a divergent Task Lane copy of `/plan-feature` business instructions.
+
+The runner is responsible for enforcing that a successful agent attempt is followed by a valid handoff before workflow state advances.
+
 ## Evolution rule
 
-Changes that alter required fields, status meaning, or publication safety must bump the contract version and update both Task Lane and `/plan-feature` together. Additive optional fields that old consumers can safely ignore may remain within the same version.
+Changes that alter required fields, status meaning, identity verification, or publication safety must bump the contract version and update the Task Lane runner/helper/consumer together.
+
+Task Lane-specific protocol evolution must not require modifying the canonical HRCS `/plan-feature` skill. If the underlying business workflow itself changes independently, update the architecture decision and relevant business sources explicitly rather than coupling that change to the machine protocol.
+
+Additive optional fields that old consumers can safely ignore may remain within the same contract version.
