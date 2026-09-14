@@ -118,6 +118,13 @@ For v1:
 - a repository has a per-repository planning lease while an active case depends on its shared checkout
 - default agent concurrency is 1
 
+The worker keeps repository storage writable for trusted clone/fetch/revalidation code at `/data/repos`.
+It exposes the same host storage a second time at `/data/agent-repos` as a read-only mount. Agent
+adapters translate a managed checkout path to this agent-facing view before starting Codex or Grok;
+plans, handoffs, logs, scratch files, and agent sessions use separate writable paths. This gives
+repository management and planning source safety separate filesystem views without copying the
+repository.
+
 Do not replace the lease model with shared concurrent mutation. If throughput later requires it, use an explicit migration to per-run worktrees/snapshots.
 
 ## Agent boundary

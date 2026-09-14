@@ -58,8 +58,9 @@ jobs:
 
       - name: Prepare persistent host directories
         run: |
-          mkdir -p "$HOME/.task-lane/repos/readonly-smoke" "$HOME/.task-lane/plans" "$HOME/.task-lane/logs"
+          mkdir -p "$HOME/.task-lane/repos/readonly-smoke/.git" "$HOME/.task-lane/plans" "$HOME/.task-lane/logs"
           printf 'source-is-immutable\n' > "$HOME/.task-lane/repos/readonly-smoke/source.txt"
+          printf ref > "$HOME/.task-lane/repos/readonly-smoke/.git/HEAD"
 
       - name: Start Docker Compose stack
         run: docker compose up -d --build
@@ -81,12 +82,18 @@ jobs:
 
       - name: Verify planning checkout is read-only but runtime remains usable
         run: |
-          if docker compose exec -T worker sh -c 'printf mutated > /data/repos/readonly-smoke/source.txt'; then
+          docker compose exec -T worker sh -c 'mkdir -p /data/repos/management-smoke/.git && printf management-write > /data/repos/management-smoke/source.txt && printf ref > /data/repos/management-smoke/.git/HEAD'
+          test "$(docker compose exec -T worker sh -c 'cat /data/repos/management-smoke/source.txt')" = management-write
+          test "$(docker compose exec -T worker sh -c 'cat /data/agent-repos/readonly-smoke/source.txt')" = source-is-immutable
+          if docker compose exec -T worker sh -c 'printf mutated > /data/agent-repos/readonly-smoke/source.txt'; then
             echo 'planning checkout unexpectedly accepted a source mutation'
             exit 1
           fi
+          if docker compose exec -T worker sh -c 'touch /data/agent-repos/readonly-smoke/new-source.txt'; then exit 1; fi
+          if docker compose exec -T worker sh -c 'rm /data/agent-repos/readonly-smoke/source.txt'; then exit 1; fi
+          if docker compose exec -T worker sh -c 'printf mutated > /data/agent-repos/readonly-smoke/.git/HEAD'; then exit 1; fi
           test "$(cat "$HOME/.task-lane/repos/readonly-smoke/source.txt")" = source-is-immutable
-          docker compose exec -T worker sh -c 'test "$(cat /data/repos/readonly-smoke/source.txt)" = source-is-immutable && node -e "const fs = require(\"node:fs\"); fs.mkdirSync(\"/data/plans/readonly-smoke\", { recursive: true }); fs.writeFileSync(\"/tmp/task-lane-scratch.txt\", \"scratch\"); fs.writeFileSync(\"/data/plans/readonly-smoke/handoff.json\", \"{}\"); require(\"node:child_process\").execFileSync(process.execPath, [\"-e\", \"process.stdout.write(\\\"child-ok\\\")\"]); fetch(\"http://web:3000/api/health\").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))" && test -s /tmp/task-lane-scratch.txt && test -s /data/plans/readonly-smoke/handoff.json'
+          docker compose exec -T worker sh -c 'test "$(cat /data/agent-repos/readonly-smoke/source.txt)" = source-is-immutable && node -e "const fs = require(\"node:fs\"); fs.mkdirSync(\"/data/plans/readonly-smoke\", { recursive: true }); fs.writeFileSync(\"/tmp/task-lane-scratch.txt\", \"scratch\"); fs.writeFileSync(\"/data/plans/readonly-smoke/handoff.json\", \"{}\"); require(\"node:child_process\").execFileSync(process.execPath, [\"-e\", \"process.stdout.write(\\\"child-ok\\\")\"]); fetch(\"http://web:3000/api/health\").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))" && test -s /tmp/task-lane-scratch.txt && test -s /data/plans/readonly-smoke/handoff.json'
 
       - name: Stop Docker Compose stack
         if: always()

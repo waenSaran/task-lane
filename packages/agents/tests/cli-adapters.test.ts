@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -86,6 +86,38 @@ test('CodexAdapter refuses canonical plan-feature execution when the repository 
     const result = await new mod.CodexAdapter({ command: fake.command }).start(request(root, 'missing-skill'));
     assert.equal(result.failure?.code, 'CANONICAL_SKILL_MISSING');
     await assert.rejects(readFile(fake.calls[0]!, 'utf8'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('adapters translate managed repository paths to the read-only agent view', async () => {
+  const mod = await import('../dist/index.js');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'task-lane-agent-view-'));
+  try {
+    const managedRoot = path.join(root, 'managed-repos');
+    const agentRoot = path.join(root, 'agent-repos');
+    const managedRepo = path.join(managedRoot, 'repo');
+    const agentRepo = path.join(agentRoot, 'repo');
+    await mkdir(managedRepo, { recursive: true });
+    await mkdir(path.join(agentRepo, '.claude', 'skills', 'plan-feature'), { recursive: true });
+    await writeFile(path.join(agentRepo, '.claude', 'skills', 'plan-feature', 'SKILL.md'), 'canonical-plan-feature-skill', 'utf8');
+    const fake = await fixture(root, `${capture}
+if (process.argv.includes('--version')) console.log('codex-cli 0.154.0');
+else console.log(JSON.stringify({ type: 'thread.started', thread_id: 'started' }));
+`);
+    const adapter = new mod.CodexAdapter({
+      command: fake.command,
+      repositoryRoot: managedRoot,
+      agentSourceRoot: agentRoot,
+      environment: { CAPTURE_PATH: fake.calls[0], REQUIRE_CANONICAL_SKILL: '1', CANONICAL_SKILL_CONTENT: 'canonical-plan-feature-skill' },
+    });
+    const result = await adapter.start(request(root, 'mapped', managedRepo));
+    const calls = (await readFile(fake.calls[0]!, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+
+    assert.equal(result.sessionId, 'started');
+    assert.equal(calls[1].cwd, await realpath(agentRepo));
+    assert.deepEqual(calls[1].args, ['exec', '--json', '--cd', agentRepo, '--sandbox', 'workspace-write', '$plan-feature DOAE-1234']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

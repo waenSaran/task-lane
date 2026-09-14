@@ -39,6 +39,8 @@ export interface CliAdapterOptions {
   command?: string;
   environment?: Readonly<Record<string, string | undefined>>;
   homeDir?: string;
+  repositoryRoot?: string;
+  agentSourceRoot?: string;
   resumeSupported?: boolean;
 }
 
@@ -164,8 +166,15 @@ interface Definition {
   command: string;
   environment: Readonly<Record<string, string | undefined>>;
   homeDir: string;
+  repositoryRoot?: string;
+  agentSourceRoot?: string;
   resumeSupported: boolean;
   expectedVersion: string;
+}
+
+function isWithin(root: string, target: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 class CliAdapter implements AgentAdapter {
@@ -213,7 +222,7 @@ class CliAdapter implements AgentAdapter {
   }
 
   async start(request: AgentExecutionRequest): Promise<AgentExecutionResult> {
-    return this.execute(request, this.startArgs(request), false);
+    return this.execute(request, false);
   }
 
   async resume(request: AgentResumeRequest): Promise<AgentExecutionResult> {
@@ -223,11 +232,24 @@ class CliAdapter implements AgentAdapter {
     if (!this.definition.resumeSupported) {
       return this.failureResult(request, null, failure('RESUME_UNSUPPORTED', 'Native agent resume is unavailable'));
     }
-    return this.execute(request, this.resumeArgs(request), true);
+    return this.execute(request, true);
   }
 
   private capabilities(): AgentCapabilities {
     return { resume: this.definition.resumeSupported, cancellation: true };
+  }
+
+  private agentCwd(cwd: string): { cwd: string; failure: AgentFailure | null } {
+    const { repositoryRoot, agentSourceRoot } = this.definition;
+    if (!repositoryRoot && !agentSourceRoot) return { cwd, failure: null };
+    if (!repositoryRoot || !agentSourceRoot) {
+      return { cwd, failure: failure('SOURCE_VIEW_UNAVAILABLE', 'Agent source view configuration is incomplete', false) };
+    }
+    if (isWithin(agentSourceRoot, cwd)) return { cwd, failure: null };
+    if (!isWithin(repositoryRoot, cwd)) {
+      return { cwd, failure: failure('SOURCE_VIEW_UNAVAILABLE', 'The selected repository is outside the managed source roots', false) };
+    }
+    return { cwd: path.join(agentSourceRoot, path.relative(repositoryRoot, cwd)), failure: null };
   }
 
   private async codexAuth(environment: NodeJS.ProcessEnv): Promise<{ authenticated: boolean; failure: AgentFailure | null }> {
@@ -265,12 +287,15 @@ class CliAdapter implements AgentAdapter {
 
   private async execute(
     request: AgentExecutionRequest,
-    args: readonly string[],
-    _resuming: boolean,
+    resuming: boolean,
   ): Promise<AgentExecutionResult> {
+    const sourceView = this.agentCwd(request.cwd);
+    if (sourceView.failure) return this.failureResult(request, null, sourceView.failure);
+    const executionRequest = { ...request, cwd: sourceView.cwd };
+    const args = resuming ? this.resumeArgs(executionRequest as AgentResumeRequest) : this.startArgs(executionRequest);
     let environment = environmentFor(this.definition.environment, request.env);
     if (this.definition.kind === 'codex' && PLAN_FEATURE_REQUEST.test(request.instruction)) {
-      const prepared = await prepareCodexEnvironment(this.definition.homeDir, request.cwd, request.artifactRoot, request.runId, environment);
+      const prepared = await prepareCodexEnvironment(this.definition.homeDir, executionRequest.cwd, request.artifactRoot, request.runId, environment);
       if (prepared.failure) return this.failureResult(request, null, prepared.failure);
       environment = prepared.environment;
     }
@@ -286,7 +311,7 @@ class CliAdapter implements AgentAdapter {
     const processResult = await runAgentProcess({
       command: this.definition.command,
       args,
-      cwd: request.cwd,
+      cwd: executionRequest.cwd,
       env: environment,
       artifactRoot: request.artifactRoot,
       runId: request.runId,
@@ -357,6 +382,8 @@ export class CodexAdapter implements AgentAdapter {
       command: options.command ?? 'codex',
       environment: options.environment ?? {},
       homeDir: options.homeDir ?? os.homedir(),
+      repositoryRoot: options.repositoryRoot ?? process.env.TASK_LANE_REPO_ROOT,
+      agentSourceRoot: options.agentSourceRoot ?? process.env.TASK_LANE_AGENT_REPO_ROOT,
       resumeSupported: options.resumeSupported ?? true,
       expectedVersion: PINNED_AGENT_VERSIONS.CODEX,
     });
@@ -377,6 +404,8 @@ export class GrokAdapter implements AgentAdapter {
       command: options.command ?? 'grok',
       environment: options.environment ?? {},
       homeDir: options.homeDir ?? os.homedir(),
+      repositoryRoot: options.repositoryRoot ?? process.env.TASK_LANE_REPO_ROOT,
+      agentSourceRoot: options.agentSourceRoot ?? process.env.TASK_LANE_AGENT_REPO_ROOT,
       resumeSupported: options.resumeSupported ?? true,
       expectedVersion: PINNED_AGENT_VERSIONS.GROK,
     });
