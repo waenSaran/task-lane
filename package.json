@@ -5,9 +5,9 @@
   "packageManager": "pnpm@12.4.1",
   "engines": { "node": ">=24.21.0" },
   "scripts": {
-    "build": "pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/web build && pnpm --filter @task-lane/worker build",
-    "typecheck": "pnpm --filter @task-lane/domain typecheck && pnpm --filter @task-lane/db typecheck && pnpm --filter @task-lane/plane typecheck && pnpm --filter @task-lane/web typecheck && pnpm --filter @task-lane/worker typecheck",
-    "test": "pnpm --filter @task-lane/domain test && pnpm --filter @task-lane/db test && pnpm --filter @task-lane/plane test && pnpm --filter @task-lane/web test && pnpm --filter @task-lane/worker test",
+    "build": "pnpm --filter @task-lane/domain build && pnpm --filter @task-lane/db build && pnpm --filter @task-lane/plane build && pnpm --filter @task-lane/agents build && pnpm --filter @task-lane/web build && pnpm --filter @task-lane/worker build",
+    "typecheck": "pnpm --filter @task-lane/domain typecheck && pnpm --filter @task-lane/db typecheck && pnpm --filter @task-lane/plane typecheck && pnpm --filter @task-lane/agents typecheck && pnpm --filter @task-lane/web typecheck && pnpm --filter @task-lane/worker typecheck",
+    "test": "pnpm --filter @task-lane/domain test && pnpm --filter @task-lane/db test && pnpm --filter @task-lane/plane test && pnpm --filter @task-lane/agents test && pnpm --filter @task-lane/web test && pnpm --filter @task-lane/worker test",
     "test:integration": "pnpm --filter @task-lane/db test:integration && pnpm --filter @task-lane/plane test:integration",
     "lint": "pnpm --filter @task-lane/web lint"
   },
