@@ -15,6 +15,7 @@ export interface ClaimJobInput {
   workerId: string;
   now: Date;
   leaseDurationMs: number;
+  types?: readonly string[];
 }
 
 interface JobRow {
@@ -70,11 +71,14 @@ export async function findJob(db: DbQueryable, id: string): Promise<Job | null> 
 }
 
 export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<Job | null> {
+  const types = input.types && input.types.length > 0 ? Array.from(input.types) : null;
   const result = await db.query<JobRow>(
     `with candidate as (
        select id
        from jobs
-       where status = 'QUEUED' and available_at <= $1
+       where status = 'QUEUED'
+         and available_at <= $1
+         and ($4::text[] is null or type = any($4::text[]))
        order by priority desc, available_at asc, created_at asc
        for update skip locked
        limit 1
@@ -89,28 +93,30 @@ export async function claimJob(db: DbQueryable, input: ClaimJobInput): Promise<J
      from candidate
      where job.id = candidate.id
      returning job.*`,
-    [input.now, input.workerId, input.leaseDurationMs],
+    [input.now, input.workerId, input.leaseDurationMs, types],
   );
   const row = result.rows[0];
   return row ? mapJob(row) : null;
 }
 
-export async function completeJob(db: DbQueryable, id: string): Promise<void> {
-  await db.query(
+export async function completeJob(db: DbQueryable, id: string): Promise<boolean> {
+  const result = await db.query(
     `update jobs
      set status = 'COMPLETED', lease_owner = null, lease_expires_at = null, updated_at = now()
      where id = $1 and status = 'LEASED'`,
     [id],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
-export async function failJob(db: DbQueryable, id: string, error: FailureDetails): Promise<void> {
-  await db.query(
+export async function failJob(db: DbQueryable, id: string, error: FailureDetails): Promise<boolean> {
+  const result = await db.query(
     `update jobs
      set status = 'FAILED', error = $2::jsonb, lease_owner = null, lease_expires_at = null, updated_at = now()
      where id = $1 and status = 'LEASED'`,
     [id, JSON.stringify(error)],
   );
+  return (result.rowCount ?? 0) === 1;
 }
 
 export async function failExpiredJobs(db: DbQueryable, now: Date): Promise<number> {

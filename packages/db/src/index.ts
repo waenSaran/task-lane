@@ -3,4 +3,5 @@ export * from "./jobs.js";
 export * from "./migrate.js";
 export * from "./planning-cases.js";
 export * from "./records.js";
+export * from "./schedule.js";
 export * from "./transaction.js";
